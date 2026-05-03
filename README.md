@@ -29,8 +29,13 @@ execute_order  (live Kite order or paper-trade simulation)
 |---|---|---|
 | **Broker** | `src/tools/kite_tools.py` | Auth (TOTP), OHLCV fetch, order placement, portfolio |
 | **Data** | `src/tools/data_pipeline.py` | OHLCV to pandas DataFrame, CSV cache |
+| **Kite client** | `src/tools/kite_client.py` | Factory: build authenticated `KiteConnect` from env vars |
+| **Market data** | `src/tools/market_data.py` | LTP, quote, OHLC, historical candles (batched, retried) |
+| **Portfolio** | `src/tools/portfolio.py` | Margins, positions, holdings, orders, order trades |
+| **Instruments** | `src/tools/instruments.py` | Download/cache instruments; `(exchange, symbol) → token` |
 | **Analysis** | `src/utils/technical_analysis.py` | RSI, EMA, Bollinger Bands, LLM prompt formatter |
 | **Risk** | `src/utils/risk_manager.py` | Daily-loss guardrail, position sizing, halt switch |
+| **Retry** | `src/utils/retry.py` | Exponential-backoff retry helper |
 | **Brain** | `src/agents/trading_agent.py` | LangGraph state machine (5 nodes) |
 | **Entry** | `src/main.py` | Trading loop, LLM loading, CLI |
 
@@ -55,6 +60,7 @@ execute_order  (live Kite order or paper-trade simulation)
 ```
 trading_bot/
 +-- data/               # CSVs, historical data, training_data.jsonl
+|   +-- instruments_cache/  # per-exchange instruments CSVs (auto-generated)
 +-- models/             # Fine-tuned LoRA adapter weights
 |   +-- README.md       # QLoRA fine-tuning guide
 +-- scripts/
@@ -63,15 +69,21 @@ trading_bot/
 |   +-- agents/
 |   |   +-- trading_agent.py   # LangGraph state machine
 |   +-- tools/
-|   |   +-- kite_tools.py      # Zerodha wrappers
+|   |   +-- kite_tools.py      # Zerodha auth, OHLCV fetch, order placement
 |   |   +-- data_pipeline.py   # OHLCV ingestion
+|   |   +-- kite_client.py     # Factory: build KiteConnect from env vars
+|   |   +-- market_data.py     # LTP / quote / OHLC / historical (batched)
+|   |   +-- portfolio.py       # Margins, positions, holdings, orders
+|   |   +-- instruments.py     # Instruments cache + token lookup
 |   +-- utils/
 |   |   +-- technical_analysis.py
 |   |   +-- risk_manager.py
+|   |   +-- retry.py           # Exponential-backoff retry helper
 |   +-- main.py         # Entry point
 +-- tests/
 |   +-- test_technical_analysis.py
 |   +-- test_risk_manager.py
+|   +-- test_kite_data_layer.py  # Tests for data layer (retry, batching, cache)
 +-- .env.example
 +-- docker-compose.yml
 +-- Dockerfile
@@ -114,13 +126,16 @@ python src/main.py
 |---|---|---|
 | `KITE_API_KEY` | - | Zerodha API key |
 | `KITE_API_SECRET` | - | Zerodha API secret |
+| `KITE_ACCESS_TOKEN` | - | Session token (set automatically after login) |
 | `KITE_TOTP_SECRET` | - | Base-32 TOTP secret for 2FA |
+| `KITE_USER_ID` | - | Zerodha user-id (used by automated TOTP login) |
 | `LLM_MODEL_PATH` | `models/trading-lora-adapter` | Path to fine-tuned LoRA weights |
 | `PAPER_TRADING` | `true` | Simulate trades without hitting Kite live API |
 | `MAX_DAILY_LOSS_PCT` | `0.02` | Halt threshold (2% of capital) |
 | `MAX_POSITION_SIZE_PCT` | `0.05` | Max single-trade size (5% of capital) |
 | `OPENING_CAPITAL` | `100000` | Portfolio value at market open (INR) |
 | `WATCHLIST` | `RELIANCE` | Comma-separated NSE symbols |
+| `INSTRUMENTS_CACHE_DIR` | `data/instruments_cache` | Directory for cached instruments CSVs |
 
 ---
 
@@ -157,6 +172,65 @@ The model outputs **JSON only**:
 
 ---
 
+## Kite Connect Data Layer
+
+The data connection layer wraps the official `kiteconnect` SDK for **read-only**
+market and portfolio access.  It is designed to be used directly from LangGraph
+nodes (e.g. `fetch_market_state`).
+
+### Modules
+
+| Module | Class / function | Purpose |
+|---|---|---|
+| `src/tools/kite_client.py` | `build_kite_client()` | Build an authenticated `KiteConnect` from env vars |
+| `src/tools/market_data.py` | `MarketData` | LTP, full quote, OHLC, historical candles (auto-batched) |
+| `src/tools/portfolio.py` | `Portfolio` | Margins, positions, holdings, orders, order trades |
+| `src/tools/instruments.py` | `InstrumentsCache` | Download / cache instruments; `(exchange, symbol) → token` |
+| `src/utils/retry.py` | `retry()` | Exponential-backoff retry helper |
+
+### Quick usage example
+
+```python
+from src.tools.kite_client import build_kite_client
+from src.tools.market_data import MarketData
+from src.tools.portfolio import Portfolio
+from src.tools.instruments import InstrumentsCache
+
+kite = build_kite_client()          # reads KITE_API_KEY / KITE_ACCESS_TOKEN
+
+# ── Market data ──────────────────────────────────────────────────────────────
+md = MarketData(kite)
+
+ltp     = md.get_ltp(["NSE:RELIANCE", "NSE:INFY"])
+quotes  = md.get_quote(["NSE:RELIANCE"])
+ohlc    = md.get_ohlc(["NSE:RELIANCE", "NSE:TCS"])
+candles = md.get_historical(738561, "2024-01-01", "2024-01-31", "day")
+
+# ── Portfolio ────────────────────────────────────────────────────────────────
+pf = Portfolio(kite)
+
+margins   = pf.get_margins()
+positions = pf.get_positions()
+holdings  = pf.get_holdings()
+orders    = pf.get_orders()
+trades    = pf.get_order_trades("220101000000001")
+day_pnl   = pf.get_day_pnl()
+
+# ── Instruments ──────────────────────────────────────────────────────────────
+cache = InstrumentsCache(kite)
+cache.warm_up(["NSE", "BSE"])       # pre-load at startup (optional)
+
+token = cache.get_instrument_token("NSE", "RELIANCE")   # → 738561
+df    = cache.get_all_instruments("NSE")                # → pandas DataFrame
+```
+
+> **Note**: `build_kite_client()` requires `KITE_API_KEY` and
+> `KITE_ACCESS_TOKEN` to be set.  Use `KiteAuthManager` from
+> `src/tools/kite_tools.py` to perform the initial TOTP login and obtain an
+> access token.
+
+---
+
 ## Tests
 
 ```bash
@@ -164,8 +238,9 @@ cd trading_bot
 python -m pytest tests/ -v
 ```
 
-45 unit tests cover technical indicators, risk guardrails, halt switch,
-and position sizing.
+69 unit tests cover technical indicators, risk guardrails, halt switch,
+position sizing, retry/backoff, market data batching, instruments cache,
+and portfolio wrappers.
 
 ---
 
