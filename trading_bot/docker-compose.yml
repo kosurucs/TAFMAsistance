@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: trading_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: trading_timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trading_logs
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+
+  trading_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading_bot
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - timescaledb
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    command: python src/main.py
+
+volumes:
+  redis_data:
+  timescale_data:
