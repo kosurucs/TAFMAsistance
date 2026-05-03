@@ -1,0 +1,40 @@
+# Broker API
+kiteconnect>=4.2.0
+
+# LLM Orchestration
+langchain>=0.2.0
+langgraph>=0.1.0
+langchain-community>=0.2.0
+
+# Data Processing
+pandas>=2.0.0
+pandas-ta>=0.3.14b
+numpy>=1.26.0
+
+# Database Clients
+redis>=5.0.0
+psycopg2-binary>=2.9.9
+
+# Environment & Config
+python-dotenv>=1.0.0
+pyotp>=2.9.0
+
+# HTTP
+requests>=2.31.0
+
+# LLM / Fine-tuning
+transformers>=4.40.0
+peft>=0.10.0
+torch>=2.1.0
+accelerate>=0.27.0
+bitsandbytes>=0.42.0
+datasets>=2.18.0
+trl>=0.8.6
+
+# Utilities
+schedule>=1.2.1
+loguru>=0.7.2
+
+# Testing
+pytest>=8.0.0
+pytest-mock>=3.12.0
