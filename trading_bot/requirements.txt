@@ -21,6 +21,12 @@ pyotp>=2.9.0
 
 # HTTP
 requests>=2.31.0
+httpx>=0.27.0
+
+# API & Dashboard
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+streamlit>=1.35.0
 
 # LLM / Fine-tuning
 transformers>=4.40.0
