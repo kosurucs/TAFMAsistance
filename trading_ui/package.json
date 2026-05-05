@@ -4,16 +4,16 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "free:ports": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$ports = 5173,8000; $allPids = @(); foreach ($p in $ports) { $allPids += (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique) }; $allPids = $allPids | Where-Object { $_ } | Select-Object -Unique; foreach ($procId in $allPids) { try { Stop-Process -Id $procId -Force -ErrorAction Stop } catch {} }; Write-Output 'Ports ready: 5173,8000'\"",
+    "dev": "vite --host localhost --port 5173 --strictPort",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "axios": "^1.7.2",
-    "lightweight-charts": "^5.2.0",
-    "lightweight-charts-react-wrapper": "^2.1.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "trading-ui": "file:"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

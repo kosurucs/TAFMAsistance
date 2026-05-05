@@ -9,6 +9,7 @@ import './App.css'
 
 const API = '/api'
 const LS_KEY = 'trading_watchlist'
+const DEFAULT_WATCHLIST = ['RELIANCE', 'INFY', 'TCS', 'HDFCBANK']
 
 export default function App() {
   const [watchlist, setWatchlist] = useState([])
@@ -34,10 +35,16 @@ export default function App() {
     }
     axios.get(`${API}/watchlist`)
       .then(r => {
-        setWatchlist(r.data.symbols)
-        if (r.data.symbols.length > 0) setSelectedSymbol(r.data.symbols[0])
+        const apiSymbols = Array.isArray(r.data?.symbols) ? r.data.symbols : []
+        const nextSymbols = apiSymbols.length > 0 ? apiSymbols : DEFAULT_WATCHLIST
+        setWatchlist(nextSymbols)
+        setSelectedSymbol(nextSymbols[0])
       })
-      .catch(() => {})
+      .catch(() => {
+        // Keep UI usable even when API is temporarily unavailable at startup.
+        setWatchlist(DEFAULT_WATCHLIST)
+        setSelectedSymbol(DEFAULT_WATCHLIST[0])
+      })
   }, [])
 
   // Persist watchlist to localStorage on every change
@@ -50,13 +57,29 @@ export default function App() {
   }, [])
 
   const removeFromWatchlist = useCallback((sym) => {
-    setWatchlist(prev => {
-      const next = prev.filter(s => s !== sym)
-      if (next.length === 0) localStorage.removeItem(LS_KEY)
-      return next
-    })
-    setSelectedSymbol(prev => prev === sym ? null : prev)
-  }, [])
+    const next = watchlist.filter(s => s !== sym)
+
+    if (next.length === 0) {
+      // Keep one symbol selected so chart + chat never disappear.
+      setWatchlist(DEFAULT_WATCHLIST)
+      setSelectedSymbol(DEFAULT_WATCHLIST[0])
+      return
+    }
+
+    setWatchlist(next)
+
+    if (!selectedSymbol || selectedSymbol === sym) {
+      setSelectedSymbol(next[0])
+    }
+  }, [watchlist, selectedSymbol])
+
+  // Self-heal if selection is out of sync with the current watchlist.
+  useEffect(() => {
+    if (watchlist.length === 0) return
+    if (!selectedSymbol || !watchlist.includes(selectedSymbol)) {
+      setSelectedSymbol(watchlist[0])
+    }
+  }, [watchlist, selectedSymbol])
 
   // Fetch data whenever symbol or interval changes
   const fetchData = useCallback(async (sym, iv) => {
@@ -176,13 +199,14 @@ export default function App() {
                 !error && <div className="loading-placeholder">Loading chart…</div>
               )}
 
-              {/* AI Chat */}
-              <ChatPanel
-                symbol={selectedSymbol}
-                indicators={marketData?.indicators || {}}
-              />
             </>
           )}
+
+          {/* AI Chat stays visible even while chart data is loading/recovering. */}
+          <ChatPanel
+            symbol={selectedSymbol}
+            indicators={marketData?.indicators || {}}
+          />
 
           {!selectedSymbol && (
             <div className="empty-state">
