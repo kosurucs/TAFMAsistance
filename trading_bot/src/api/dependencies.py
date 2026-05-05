@@ -8,6 +8,7 @@ startup and then injected into route handlers via ``Depends()``.
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,7 @@ _watchlist: list[str] = [
     for s in os.environ.get("WATCHLIST", "RELIANCE").split(",")
     if s.strip()
 ]
+_watchlist_lock: threading.Lock = threading.Lock()
 
 
 # ── LLM chain ─────────────────────────────────────────────────────────────────
@@ -143,9 +145,11 @@ def get_llm_chain() -> Any:
 
 
 def get_watchlist() -> list[str]:
-    return _watchlist
+    with _watchlist_lock:
+        return list(_watchlist)
 
 
 def set_watchlist(symbols: list[str]) -> None:
     global _watchlist
-    _watchlist = [s.strip().upper() for s in symbols if s.strip()]
+    with _watchlist_lock:
+        _watchlist = [s.strip().upper() for s in symbols if s.strip()]

@@ -15,6 +15,7 @@ import os
 import time
 from typing import Any
 
+import pandas as pd
 import requests
 import streamlit as st
 
@@ -296,7 +297,6 @@ elif page == "Portfolio":
         positions = portfolio.get("positions", {})
         day_pos = positions.get("day", [])
         if day_pos:
-            import pandas as pd
             st.dataframe(pd.DataFrame(day_pos))
         else:
             st.info("No open positions.")
@@ -304,7 +304,6 @@ elif page == "Portfolio":
         st.subheader("Holdings")
         holdings = portfolio.get("holdings", [])
         if holdings:
-            import pandas as pd
             st.dataframe(pd.DataFrame(holdings))
         else:
             st.info("No holdings.")
@@ -343,7 +342,9 @@ elif page == "Settings":
     st.subheader("Auto-Refresh")
     auto_refresh = st.checkbox("Enable auto-refresh (every 60 seconds)", value=False)
     if auto_refresh:
-        st.info("Auto-refresh enabled. Page will refresh every 60 seconds.")
-        time.sleep(60)
+        refresh_placeholder = st.empty()
+        for remaining in range(60, 0, -1):
+            refresh_placeholder.info(f"⏳ Auto-refresh in {remaining}s…")
+            time.sleep(1)
         st.cache_data.clear()
         st.rerun()
