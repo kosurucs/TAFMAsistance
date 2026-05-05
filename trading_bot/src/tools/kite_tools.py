@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+_IST = ZoneInfo('Asia/Kolkata')
 from typing import Any
 
 import pyotp
@@ -38,7 +41,7 @@ class KiteAuthManager:
     def __init__(self) -> None:
         self.api_key: str = os.environ["KITE_API_KEY"]
         self.api_secret: str = os.environ["KITE_API_SECRET"]
-        self.totp_secret: str = os.environ["KITE_TOTP_SECRET"]
+        self.totp_secret: str = os.environ.get("KITE_TOTP_SECRET", "")
         self._kite: Any | None = None
 
     # ------------------------------------------------------------------
@@ -82,30 +85,17 @@ class KiteAuthManager:
         """Perform interactive TOTP login and return the access token."""
         import requests  # local import – avoids hard dependency at module level
 
-        totp = pyotp.TOTP(self.totp_secret)
-
-        # Step 1 – username/password login to obtain request_token.
-        #   In practice the user must supply their Zerodha user-id & password;
-        #   for fully automated setups, store them in .env (KITE_USER_ID /
-        #   KITE_PASSWORD).  The code below uses a headless flow only when
-        #   those variables are set; otherwise it falls back to asking the
-        #   user to paste the request_token manually.
         user_id = os.environ.get("KITE_USER_ID", "")
         password = os.environ.get("KITE_PASSWORD", "")
 
-        if user_id and password:
+        if user_id and password and self.totp_secret:
+            totp = pyotp.TOTP(self.totp_secret)
             request_token = self._automated_login(
                 requests, user_id, password, totp.now()
             )
         else:
-            logger.warning(
-                "KITE_USER_ID / KITE_PASSWORD not set. "
-                "Please visit the login URL manually and paste the "
-                "request_token from the redirect URL."
-            )
-            kite_tmp = KiteConnect(api_key=self.api_key)
-            print(f"\nLogin URL: {kite_tmp.login_url()}\n")
-            request_token = input("Paste request_token here: ").strip()
+            # Open browser to Kite login; capture redirect on localhost:7049
+            request_token = self._browser_callback_login()
 
         kite = KiteConnect(api_key=self.api_key)
         data = kite.generate_session(request_token, api_secret=self.api_secret)
@@ -115,6 +105,143 @@ class KiteAuthManager:
         os.environ["KITE_ACCESS_TOKEN"] = access_token
         logger.info("Login successful; access token acquired.")
         return access_token
+
+    def _browser_callback_login(self) -> str:
+        """Open the Kite login URL in a browser and capture the request_token
+        automatically via a temporary local HTTPS server on port 7049.
+
+        A self-signed certificate is generated in-memory so the redirect from
+        Zerodha (https://localhost:7049/...) is received without any manual
+        copy-paste.  The browser will show a certificate warning — click
+        "Advanced → Proceed" once to allow it.
+        """
+        import ipaddress
+        import ssl
+        import tempfile
+        import threading
+        import webbrowser
+        from datetime import datetime, timezone
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from urllib.parse import parse_qs, urlparse
+
+        # ── generate a self-signed cert valid for localhost ───────────────────
+        try:
+            from cryptography import x509
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
+            from cryptography.x509.oid import NameOID
+
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            subject = issuer = x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+            ])
+            cert = (
+                x509.CertificateBuilder()
+                .subject_name(subject)
+                .issuer_name(issuer)
+                .public_key(key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(datetime.now(timezone.utc))
+                .not_valid_after(datetime(2030, 1, 1, tzinfo=timezone.utc))
+                .add_extension(
+                    x509.SubjectAlternativeName([
+                        x509.DNSName("localhost"),
+                        x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+                    ]),
+                    critical=False,
+                )
+                .sign(key, hashes.SHA256())
+            )
+            cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+            key_pem = key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            )
+            tmp_cert = tempfile.NamedTemporaryFile(suffix=".pem", delete=False)
+            tmp_key = tempfile.NamedTemporaryFile(suffix=".pem", delete=False)
+            tmp_cert.write(cert_pem); tmp_cert.flush()
+            tmp_key.write(key_pem);  tmp_key.flush()
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_ctx.load_cert_chain(tmp_cert.name, tmp_key.name)
+            use_ssl = True
+        except ImportError:
+            logger.warning(
+                "cryptography package not installed – falling back to plain HTTP. "
+                "Change redirect URL in Kite portal to http://localhost:7049 or "
+                "run: pip install cryptography"
+            )
+            ssl_ctx = None
+            use_ssl = False
+
+        request_token_holder: list[str] = []
+        server_ready = threading.Event()
+        token_received = threading.Event()
+
+        class _CallbackHandler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                parsed = urlparse(self.path)
+                params = parse_qs(parsed.query)
+                token = params.get("request_token", [None])[0]
+                status = params.get("status", [""])[0]
+
+                if status == "success" and token:
+                    request_token_holder.append(token)
+                    body = b"<html><body><h2>Login successful! You can close this tab.</h2></body></html>"
+                    self.send_response(200)
+                else:
+                    body = b"<html><body><h2>Login failed or token missing. Please retry.</h2></body></html>"
+                    self.send_response(400)
+
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                token_received.set()
+
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+                pass  # suppress default HTTP server logs
+
+        httpd = HTTPServer(("localhost", 7049), _CallbackHandler)
+        if use_ssl and ssl_ctx:
+            httpd.socket = ssl_ctx.wrap_socket(httpd.socket, server_side=True)
+        httpd.timeout = 1
+
+        def _serve() -> None:
+            server_ready.set()
+            while not token_received.is_set():
+                httpd.handle_request()
+            httpd.server_close()
+
+        thread = threading.Thread(target=_serve, daemon=True)
+        thread.start()
+        server_ready.wait()
+
+        kite_tmp = KiteConnect(api_key=self.api_key)
+        login_url = kite_tmp.login_url()
+        scheme = "https" if use_ssl else "http"
+        logger.info("Opening browser for Kite login: {}", login_url)
+        logger.info("Callback server listening on {}://localhost:7049", scheme)
+        webbrowser.open(login_url)
+        print(f"\nIf the browser did not open, visit:\n  {login_url}\n")
+        if use_ssl:
+            print(
+                "NOTE: Your browser may warn about an untrusted certificate.\n"
+                "Click 'Advanced' → 'Proceed to localhost' to allow it.\n"
+            )
+
+        logger.info("Waiting for Kite redirect to {}://localhost:7049 ...", scheme)
+        token_received.wait(timeout=300)
+
+        if not request_token_holder:
+            raise RuntimeError(
+                "Timed out waiting for Kite login redirect. "
+                "Please run again and complete login within 5 minutes."
+            )
+
+        token = request_token_holder[0]
+        logger.info("request_token captured from redirect.")
+        return token
 
     @staticmethod
     def _automated_login(
@@ -184,7 +311,7 @@ class KiteDataFetcher:
             List of candle dicts with keys:
             ``date, open, high, low, close, volume``.
         """
-        to_date = datetime.now()
+        to_date = datetime.now(_IST)
         from_date = to_date - timedelta(days=days_back)
 
         candles: list[dict[str, Any]] = self._kite.historical_data(

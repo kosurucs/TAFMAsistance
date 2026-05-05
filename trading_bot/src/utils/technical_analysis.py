@@ -1,8 +1,7 @@
 """
 technical_analysis.py – Technical indicator calculations via pandas_ta.
 
-Computes RSI, EMA (fast/slow), and Bollinger Bands on a price DataFrame and
-returns a structured dict that can be passed directly to the LLM prompt.
+Computes RSI, EMA, Bollinger Bands, MACD, VWAP, ATR, Stochastic, and more.
 """
 
 from __future__ import annotations
@@ -22,37 +21,30 @@ except ImportError:  # pragma: no cover
 RSI_PERIOD: int = 14
 EMA_FAST: int = 9
 EMA_SLOW: int = 21
+EMA_MID: int = 50
+EMA_LONG: int = 200
 BB_PERIOD: int = 20
 BB_STD: float = 2.0
+MACD_FAST: int = 12
+MACD_SLOW: int = 26
+MACD_SIGNAL: int = 9
+ATR_PERIOD: int = 14
+STOCH_K: int = 14
+STOCH_D: int = 3
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
 def compute_indicators(df: pd.DataFrame) -> dict[str, Any]:
-    """Calculate RSI, EMA (fast/slow), and Bollinger Bands.
+    """Calculate a full suite of technical indicators.
 
-    Args:
-        df: OHLCV DataFrame with columns ``open, high, low, close, volume``
-            and a datetime index.  Must have at least ``BB_PERIOD`` (20) rows.
-
-    Returns:
-        Dict containing the *latest* values for every indicator:
-
-        .. code-block:: python
-
-            {
-                "rsi":        float,   # 0-100
-                "ema_fast":   float,   # EMA-9
-                "ema_slow":   float,   # EMA-21
-                "bb_upper":   float,
-                "bb_middle":  float,
-                "bb_lower":   float,
-                "close":      float,   # last close price
-                "volume":     int,
-                "trend":      str,     # "BULLISH" | "BEARISH" | "NEUTRAL"
-                "bb_signal":  str,     # "ABOVE_UPPER" | "BELOW_LOWER" | "INSIDE"
-            }
+    Returns the *latest* values for:
+        rsi, ema_fast, ema_slow, ema_50, ema_200,
+        bb_upper, bb_middle, bb_lower,
+        macd, macd_signal, macd_hist,
+        vwap, atr, stoch_k, stoch_d,
+        close, volume, trend, bb_signal, macd_signal_label, stoch_signal
     """
     if ta is None:
         raise RuntimeError(
@@ -70,45 +62,92 @@ def compute_indicators(df: pd.DataFrame) -> dict[str, Any]:
     # EMAs
     df[f"ema_{EMA_FAST}"] = ta.ema(df["close"], length=EMA_FAST)
     df[f"ema_{EMA_SLOW}"] = ta.ema(df["close"], length=EMA_SLOW)
+    df[f"ema_{EMA_MID}"]  = ta.ema(df["close"], length=EMA_MID)
+    df[f"ema_{EMA_LONG}"] = ta.ema(df["close"], length=EMA_LONG)
 
-    # Bollinger Bands  (pandas_ta returns BBL_*, BBM_*, BBU_* columns)
+    # Bollinger Bands
     bb = ta.bbands(df["close"], length=BB_PERIOD, std=BB_STD)
     if bb is not None:
         df = pd.concat([df, bb], axis=1)
 
-    # Pull latest row, dropping any NaN indicators
+    # MACD
+    macd_df = ta.macd(df["close"], fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL)
+    if macd_df is not None:
+        df = pd.concat([df, macd_df], axis=1)
+
+    # ATR
+    df["atr"] = ta.atr(df["high"], df["low"], df["close"], length=ATR_PERIOD)
+
+    # Stochastic
+    stoch_df = ta.stoch(df["high"], df["low"], df["close"], k=STOCH_K, d=STOCH_D)
+    if stoch_df is not None:
+        df = pd.concat([df, stoch_df], axis=1)
+
+    # VWAP (requires intraday; gracefully skips if not available)
+    try:
+        df["vwap"] = ta.vwap(df["high"], df["low"], df["close"], df["volume"])
+    except Exception:
+        df["vwap"] = float("nan")
+
+    # Pull latest row
     latest = df.iloc[-1]
 
     close = float(latest["close"])
     rsi = _safe_float(latest.get("rsi"))
-    ema_fast = _safe_float(latest.get(f"ema_{EMA_FAST}"))
-    ema_slow = _safe_float(latest.get(f"ema_{EMA_SLOW}"))
+    ema_fast  = _safe_float(latest.get(f"ema_{EMA_FAST}"))
+    ema_slow  = _safe_float(latest.get(f"ema_{EMA_SLOW}"))
+    ema_50    = _safe_float(latest.get(f"ema_{EMA_MID}"))
+    ema_200   = _safe_float(latest.get(f"ema_{EMA_LONG}"))
 
-    # Bollinger Band column names vary by pandas_ta version
-    bb_upper = _safe_float(
-        latest.get(f"BBU_{BB_PERIOD}_{BB_STD}") or latest.get("BBU")
-    )
-    bb_middle = _safe_float(
-        latest.get(f"BBM_{BB_PERIOD}_{BB_STD}") or latest.get("BBM")
-    )
-    bb_lower = _safe_float(
-        latest.get(f"BBL_{BB_PERIOD}_{BB_STD}") or latest.get("BBL")
-    )
+    # BB column names vary by pandas_ta version
+    bb_upper  = _safe_float(latest.get(f"BBU_{BB_PERIOD}_{BB_STD}") or latest.get("BBU"))
+    bb_middle = _safe_float(latest.get(f"BBM_{BB_PERIOD}_{BB_STD}") or latest.get("BBM"))
+    bb_lower  = _safe_float(latest.get(f"BBL_{BB_PERIOD}_{BB_STD}") or latest.get("BBL"))
+
+    # MACD column names
+    macd_val    = _safe_float(latest.get(f"MACD_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}") or latest.get("MACD"))
+    macd_sig    = _safe_float(latest.get(f"MACDs_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}") or latest.get("MACDs"))
+    macd_hist   = _safe_float(latest.get(f"MACDh_{MACD_FAST}_{MACD_SLOW}_{MACD_SIGNAL}") or latest.get("MACDh"))
+
+    atr = _safe_float(latest.get("atr"))
+    vwap = _safe_float(latest.get("vwap"))
+
+    # Stochastic column names
+    stoch_k_val = _safe_float(latest.get(f"STOCHk_{STOCH_K}_{STOCH_D}_3") or latest.get("STOCHk"))
+    stoch_d_val = _safe_float(latest.get(f"STOCHd_{STOCH_K}_{STOCH_D}_3") or latest.get("STOCHd"))
 
     trend = _classify_trend(ema_fast, ema_slow)
     bb_signal = _classify_bb_signal(close, bb_upper, bb_lower)
+    macd_label = _classify_macd(macd_val, macd_sig)
+    stoch_signal = _classify_stoch(stoch_k_val)
 
     return {
-        "rsi": rsi,
-        "ema_fast": ema_fast,
-        "ema_slow": ema_slow,
-        "bb_upper": bb_upper,
-        "bb_middle": bb_middle,
-        "bb_lower": bb_lower,
-        "close": close,
-        "volume": int(latest.get("volume", 0)),
-        "trend": trend,
-        "bb_signal": bb_signal,
+        "close":        close,
+        "volume":       int(latest.get("volume", 0)),
+        # Momentum
+        "rsi":          rsi,
+        "stoch_k":      round(stoch_k_val, 1),
+        "stoch_d":      round(stoch_d_val, 1),
+        "stoch_signal": stoch_signal,
+        # Trend / MA
+        "ema_fast":     ema_fast,
+        "ema_slow":     ema_slow,
+        "ema_50":       ema_50,
+        "ema_200":      ema_200,
+        "trend":        trend,
+        # MACD
+        "macd":         round(macd_val, 4),
+        "macd_signal":  round(macd_sig, 4),
+        "macd_hist":    round(macd_hist, 4),
+        "macd_label":   macd_label,
+        # Volatility
+        "bb_upper":     bb_upper,
+        "bb_middle":    bb_middle,
+        "bb_lower":     bb_lower,
+        "bb_signal":    bb_signal,
+        "atr":          round(atr, 2),
+        # Volume / price
+        "vwap":         round(vwap, 2) if vwap else 0.0,
     }
 
 
@@ -116,25 +155,23 @@ def format_market_state_prompt(
     symbol: str,
     indicators: dict[str, Any],
 ) -> str:
-    """Render a structured prompt string for the LLM.
-
-    Args:
-        symbol: Instrument symbol, e.g. ``"NSE:RELIANCE"``.
-        indicators: Output of :func:`compute_indicators`.
-
-    Returns:
-        A formatted Instruction string ready to be appended to the LLM context.
-    """
+    """Render a structured prompt string for the LLM."""
     return (
         f"Instruction: Analyse the current market state for {symbol}.\n"
         f"Market State:\n"
         f"  - Close Price  : {indicators['close']:.2f}\n"
         f"  - RSI ({RSI_PERIOD})      : {indicators['rsi']:.2f}\n"
+        f"  - Stoch K/D    : {indicators['stoch_k']:.1f} / {indicators['stoch_d']:.1f} ({indicators['stoch_signal']})\n"
         f"  - EMA Fast ({EMA_FAST})  : {indicators['ema_fast']:.2f}\n"
         f"  - EMA Slow ({EMA_SLOW})  : {indicators['ema_slow']:.2f}\n"
+        f"  - EMA 50       : {indicators['ema_50']:.2f}\n"
+        f"  - EMA 200      : {indicators['ema_200']:.2f}\n"
+        f"  - MACD         : {indicators['macd']:.4f} / Signal: {indicators['macd_signal']:.4f} ({indicators['macd_label']})\n"
         f"  - BB Upper     : {indicators['bb_upper']:.2f}\n"
         f"  - BB Middle    : {indicators['bb_middle']:.2f}\n"
         f"  - BB Lower     : {indicators['bb_lower']:.2f}\n"
+        f"  - ATR ({ATR_PERIOD})      : {indicators['atr']:.2f}\n"
+        f"  - VWAP         : {indicators['vwap']:.2f}\n"
         f"  - Trend        : {indicators['trend']}\n"
         f"  - BB Signal    : {indicators['bb_signal']}\n"
         f"Output: Respond ONLY with valid JSON of the form "
@@ -174,3 +211,25 @@ def _classify_bb_signal(close: float, bb_upper: float, bb_lower: float) -> str:
     if close <= bb_lower:
         return "BELOW_LOWER"
     return "INSIDE"
+
+
+def _classify_macd(macd_val: float, macd_sig: float) -> str:
+    """Classify MACD crossover signal."""
+    if macd_val == 0.0 and macd_sig == 0.0:
+        return "NEUTRAL"
+    if macd_val > macd_sig:
+        return "BULLISH"
+    if macd_val < macd_sig:
+        return "BEARISH"
+    return "NEUTRAL"
+
+
+def _classify_stoch(k: float) -> str:
+    """Classify Stochastic %K signal."""
+    if k == 0.0:
+        return "NEUTRAL"
+    if k >= 80:
+        return "OVERBOUGHT"
+    if k <= 20:
+        return "OVERSOLD"
+    return "NEUTRAL"

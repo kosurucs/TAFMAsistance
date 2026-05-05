@@ -1,0 +1,34 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Node dependencies
+node_modules/
+
+# Environment variables (NEVER commit secrets)
+.env
+*.env
+
+# Root-level cached data (large files, auto-generated)
+data/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# trading_ui build output
+trading_ui/dist/
+trading_ui/.env
+trading_ui/.env.*
+
+# npm lock (generated, not tracked at root)
+# package-lock.json  # uncomment if you don't want to track it

@@ -1,0 +1,22 @@
+.quote-bar {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+  padding: 12px 16px;
+}
+.quote-bar.loading { opacity: 0.5; }
+.qb-left { display: flex; align-items: center; gap: 8px; }
+.qb-symbol { font-size: 18px; font-weight: 700; color: #c9d1d9; }
+.qb-exchange {
+  font-size: 10px; font-weight: 600; background: #21262d; color: #8b949e;
+  padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+}
+.qb-center { display: flex; align-items: baseline; gap: 10px; }
+.qb-ltp { font-size: 24px; font-weight: 700; color: #e6edf3; }
+.qb-change { font-size: 14px; font-weight: 600; }
+.qb-change.up { color: #3fb950; }
+.qb-change.down { color: #f85149; }
+.qb-loading { color: #8b949e; font-size: 13px; }
+.qb-right { display: flex; gap: 16px; margin-left: auto; flex-wrap: wrap; }
+.qb-stat { display: flex; flex-direction: column; gap: 2px; }
+.qb-stat span { font-size: 10px; color: #8b949e; text-transform: uppercase; }
+.qb-stat strong { font-size: 13px; color: #c9d1d9; }

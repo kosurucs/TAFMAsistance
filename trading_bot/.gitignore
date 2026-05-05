@@ -29,9 +29,11 @@ env/
 *.ipynb
 
 # Data & Models (large binary files)
+data/
 data/*.csv
 data/*.parquet
 data/*.h5
+data/instruments_cache/
 models/*.bin
 models/*.safetensors
 models/*.gguf

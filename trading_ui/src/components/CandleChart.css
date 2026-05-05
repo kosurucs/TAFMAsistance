@@ -1,0 +1,41 @@
+.chart-wrapper {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.chart-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1d9;
+  border-bottom: 1px solid #21262d;
+  min-height: 36px;
+}
+.chart-ohlcv {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #8b949e;
+  flex-wrap: wrap;
+}
+.ohlcv-time {
+  color: #484f58;
+  font-size: 11px;
+  margin-right: 2px;
+}
+.chart-ohlcv strong {
+  font-weight: 600;
+  color: #c9d1d9;
+}
+.ohlcv-high strong { color: #3fb950; }
+.ohlcv-low  strong { color: #f85149; }
+.ohlcv-up   strong { color: #3fb950; }
+.ohlcv-down strong { color: #f85149; }
+.chart-container { width: 100%; }

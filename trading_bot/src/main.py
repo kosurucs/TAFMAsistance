@@ -187,10 +187,29 @@ def run() -> None:
 
             try:
                 result = trading_graph.invoke(initial_state)
+
+                # ── Log market data & indicators ──────────────────────────────
+                ind = result.get("indicators", {})
+                if ind:
+                    logger.info(
+                        "{} | close={:.2f} | RSI={:.1f} | EMA9={:.2f} | EMA21={:.2f}"
+                        " | BB_upper={:.2f} | BB_lower={:.2f} | trend={} | bb_signal={}",
+                        symbol,
+                        ind.get("close", 0),
+                        ind.get("rsi", 0),
+                        ind.get("ema_fast", 0),
+                        ind.get("ema_slow", 0),
+                        ind.get("bb_upper", 0),
+                        ind.get("bb_lower", 0),
+                        ind.get("trend", "N/A"),
+                        ind.get("bb_signal", "N/A"),
+                    )
+
                 logger.info(
-                    "{} | action={} | status={} | order_id={}",
+                    "{} | action={} | reason={} | status={} | order_id={}",
                     symbol,
                     result.get("llm_action", "N/A"),
+                    result.get("llm_reason", ""),
                     result.get("execution_status", "N/A"),
                     result.get("order_id"),
                 )
