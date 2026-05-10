@@ -15,6 +15,7 @@ GET  /watchlist          Current watchlist
 POST /watchlist          Replace watchlist
 POST /bot/kill           Activate kill switch
 POST /bot/unkill         Deactivate kill switch
+POST /bot/authenticate   Trigger Kite authentication flow
 GET  /market/{symbol}    Live quote + technical indicators
 GET  /portfolio          Full portfolio snapshot
 GET  /portfolio/positions

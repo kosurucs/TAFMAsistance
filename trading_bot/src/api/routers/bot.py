@@ -15,6 +15,7 @@ import os
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from fastapi import HTTPException
 from pydantic import BaseModel
 
 from src.api.dependencies import (
@@ -24,6 +25,7 @@ from src.api.dependencies import (
     set_watchlist,
 )
 from src.utils.risk_manager import RiskManager
+from src.tools.kite_tools import KiteAuthManager
 
 router = APIRouter()
 
@@ -79,3 +81,27 @@ def kill_bot(risk_mgr: RiskManager = Depends(get_risk_manager)) -> dict[str, str
 def unkill_bot(risk_mgr: RiskManager = Depends(get_risk_manager)) -> dict[str, str]:
     risk_mgr.deactivate_kill_switch()
     return {"message": "Kill switch deactivated. Trading resumed."}
+
+
+@router.post("/bot/authenticate", summary="Trigger Kite authentication")
+def authenticate_kite() -> dict[str, str]:
+    """Authenticate with Kite and cache the access token in process env.
+
+    This explicitly triggers the login flow backed by ``KiteAuthManager``.
+    If ``KITE_ACCESS_TOKEN`` is already set, the existing session is reused.
+    """
+    try:
+        auth = KiteAuthManager()
+        auth.get_kite_session()
+        return {"status": "ok", "message": "Kite authentication successful."}
+    except KeyError as exc:
+        missing_key = str(exc).strip("\"'")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Missing environment variable: {missing_key}. "
+                "Set required Kite credentials and retry."
+            ),
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Kite authentication failed: {exc}") from exc

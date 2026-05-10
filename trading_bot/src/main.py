@@ -59,13 +59,37 @@ PAPER_TRADING: bool = os.environ.get("PAPER_TRADING", "true").lower() == "true"
 
 
 def _build_llm_chain():
-    """Return a LangChain Runnable backed by the fine-tuned local LLM.
+    """Return a LangChain Runnable backed by Ollama (trading-assistant model).
 
-    Falls back to a stub chain when the model weights are not present, so the
-    rest of the pipeline can be exercised without a GPU.
+    Priority:
+      1. Ollama 'trading-assistant' if Ollama is running
+      2. Ollama 'mistral' fallback
+      3. Fine-tuned local HuggingFace model (GPU required)
+      4. WAIT-only stub
     """
-    model_path = os.environ.get("LLM_MODEL_PATH", "models/trading-lora-adapter")
+    # ── Try Ollama first (no GPU needed) ─────────────────────────────────────
+    ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    for model_name in ("trading-assistant", "mistral"):
+        try:
+            import urllib.request as _ureq, json as _json
+            probe = _ureq.Request(
+                f"{ollama_url}/api/tags",
+                headers={"Content-Type": "application/json"},
+            )
+            resp = _ureq.urlopen(probe, timeout=2)
+            tags = _json.loads(resp.read().decode())
+            available = [m["name"].split(":")[0] for m in tags.get("models", [])]
+            if model_name in available or model_name == "mistral":
+                chain = _OllamaLLMChain(ollama_url, model_name)
+                # Quick connectivity check
+                chain.invoke({"input": "ping"})
+                logger.info("Using Ollama model '{}' at {}", model_name, ollama_url)
+                return chain
+        except Exception:  # noqa: BLE001
+            break
 
+    # ── Try fine-tuned local HuggingFace model (requires GPU) ────────────────
+    model_path = os.environ.get("LLM_MODEL_PATH", "models/trading-lora-adapter")
     if Path(model_path).exists():
         logger.info("Loading fine-tuned LLM from {}...", model_path)
         try:
@@ -94,8 +118,38 @@ def _build_llm_chain():
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not load fine-tuned LLM ({}). Using stub.", exc)
 
-    logger.warning("LLM model not found – using WAIT-only stub chain.")
+    logger.warning("No LLM available – using WAIT-only stub chain. Start Ollama for AI decisions.")
     return _StubLLMChain()
+
+
+class _OllamaLLMChain:
+    """LLM chain that calls a local Ollama model for trading decisions."""
+
+    _SYSTEM = (
+        "You are an expert algorithmic trading assistant. "
+        "Analyse the provided market state and respond with a JSON object only. "
+        "Format: {\"action\": \"BUY\" | \"SELL\" | \"WAIT\", \"reason\": \"<one sentence>\"}. "
+        "Only recommend BUY/SELL when there is a strong technical signal. Default to WAIT."
+    )
+
+    def __init__(self, base_url: str, model: str) -> None:
+        self._url = f"{base_url}/api/generate"
+        self._model = model
+
+    def invoke(self, inputs: dict) -> str:
+        import json as _json, urllib.request as _ureq
+        prompt = inputs.get("input", "")
+        full_prompt = f"{self._SYSTEM}\n\n{prompt}"
+        data = _json.dumps({
+            "model": self._model,
+            "prompt": full_prompt,
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": 128},
+        }).encode()
+        req = _ureq.Request(self._url, data=data, headers={"Content-Type": "application/json"})
+        with _ureq.urlopen(req, timeout=30) as r:
+            body = _json.loads(r.read().decode())
+            return body.get("response", '{"action":"WAIT","reason":"No response"}')
 
 
 class _StubLLMChain:

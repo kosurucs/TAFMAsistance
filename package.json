@@ -5,7 +5,7 @@
     "free:ports": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$ports = 8000,5173; $allPids = @(); foreach ($p in $ports) { $allPids += (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique) }; $allPids = $allPids | Where-Object { $_ } | Select-Object -Unique; foreach ($procId in $allPids) { try { Stop-Process -Id $procId -Force -ErrorAction Stop } catch {} }; Write-Output 'Ports ready: 8000,5173'\"",
     "run:bot": "set PYTHONPATH=c:\\Source\\TAFMAsistance\\TAFMAsistance\\trading_bot&& c:\\Source\\TAFMAsistance\\TAFMAsistance\\.venv\\Scripts\\python.exe c:\\Source\\TAFMAsistance\\TAFMAsistance\\trading_bot\\src\\main.py",
     "run:api": "npm run free:api-port && set PYTHONPATH=c:\\Source\\TAFMAsistance\\TAFMAsistance\\trading_bot&& c:\\Source\\TAFMAsistance\\TAFMAsistance\\.venv\\Scripts\\python.exe -m uvicorn src.ui_api:app --host 0.0.0.0 --port 8000 --app-dir c:\\Source\\TAFMAsistance\\TAFMAsistance\\trading_bot",
-    "run:ui": "npm run free:ui-port && npm --prefix trading_ui run dev",
+    "run:ui": "npm run free:ui-port && powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (-not (Test-Path 'trading_ui/node_modules')) { npm --prefix trading_ui install; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }; npm --prefix trading_ui run dev\"",
     "run:all": "concurrently -n API,UI -c cyan,green \"npm:run:api\" \"npm:run:ui\"",
     "run:bot-ui": "npm run free:ports && concurrently -n BOT,API,UI -c yellow,cyan,green \"npm:run:bot\" \"npm:run:api\" \"npm:run:ui\"",
     "run:full": "npm run run:bot-ui"
