@@ -1,0 +1,145 @@
+.market-depth {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  font-family: var(--font-family-mono);
+}
+
+.market-depth__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.market-depth__header h3 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+}
+
+.market-depth__interval {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  background: var(--bg-secondary);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+}
+
+.market-depth__loading {
+  text-align: center;
+  padding: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.market-depth__empty,
+.market-depth__error {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-base);
+}
+
+.market-depth__error {
+  color: var(--color-error);
+}
+
+.market-depth__tables {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+}
+
+@media (max-width: 768px) {
+  .market-depth__tables {
+    grid-template-columns: 1fr;
+  }
+}
+
+.market-depth__section h4 {
+  margin: 0 0 var(--spacing-sm);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  font-family: var(--font-family);
+}
+
+.market-depth__section--buy h4 {
+  color: var(--color-success);
+}
+
+.market-depth__section--sell h4 {
+  color: var(--color-error);
+}
+
+.market-depth__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.market-depth__table thead {
+  background: var(--bg-secondary);
+}
+
+.market-depth__table th {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.market-depth__table td {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.market-depth__table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.market-depth__price {
+  font-weight: 600;
+}
+
+.market-depth__price--buy {
+  color: var(--color-success);
+}
+
+.market-depth__price--sell {
+  color: var(--color-error);
+}
+
+.market-depth__total {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
+.market-depth__total td {
+  border-bottom: 2px solid var(--border-color);
+  padding-top: var(--spacing-sm);
+}
+
+.market-depth__empty-cell {
+  text-align: center;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* Align numbers to the right for better readability */
+.market-depth__table td:nth-child(2),
+.market-depth__table th:nth-child(2) {
+  text-align: right;
+}
+
+/* Align prices to the right in sell table */
+.market-depth__section--sell .market-depth__table td:first-child,
+.market-depth__section--sell .market-depth__table th:first-child {
+  text-align: right;
+}

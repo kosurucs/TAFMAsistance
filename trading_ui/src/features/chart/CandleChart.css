@@ -1,0 +1,70 @@
+.chart-wrapper {
+  position: relative;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.chart-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.chart-title-right {
+  display: flex;
+  gap: var(--space-md);
+  align-items: center;
+}
+
+.chart-size-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.chart-note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.chart-canvas {
+  width: 100%;
+  cursor: crosshair;
+}
+
+.chart-resize-handle-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.chart-resize-handle-bottom:hover {
+  background: var(--color-accent);
+  opacity: 0.3;
+}
+
+.chart-resize-handle-corner {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: var(--color-border);
+  border-top-left-radius: var(--radius-sm);
+}
+
+.chart-resize-handle-corner:hover {
+  background: var(--color-accent);
+}

@@ -11,6 +11,7 @@ Implements:
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,7 @@ MAX_POSITION_SIZE_PCT: float = float(os.environ.get("MAX_POSITION_SIZE_PCT", "0.
 PAPER_TRADING: bool = os.environ.get("PAPER_TRADING", "true").lower() == "true"
 
 # A local flag file acts as a manual kill switch when Redis is not available.
-KILL_SWITCH_FLAG: Path = Path(os.environ.get("KILL_SWITCH_FLAG", "/tmp/trading_kill_switch"))
+KILL_SWITCH_FLAG: Path = Path(os.environ.get("KILL_SWITCH_FLAG", str(Path(tempfile.gettempdir()) / "trading_kill_switch")))
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -168,6 +169,7 @@ class RiskManager:
         price: float,
         quantity: int,
         current_pnl: float,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Run all guardrails in sequence and return a validation result.
 
@@ -175,6 +177,7 @@ class RiskManager:
             price: Proposed trade price.
             quantity: Proposed trade quantity.
             current_pnl: Current day P&L.
+            **kwargs: Optional additional params (e.g., sl, tp for Phase 3 R:R validation).
 
         Returns:
             Dict with keys:
@@ -195,6 +198,17 @@ class RiskManager:
                 "reason": "Daily loss limit exceeded.",
                 "safe_quantity": 0,
             }
+
+        # Phase 3: Check SL does not exceed 3% from entry (Risk Guardian mandatory check)
+        sl = kwargs.get("sl", 0.0)
+        if sl and sl > 0 and price and price > 0:
+            sl_pct = abs(price - sl) / price
+            if sl_pct > 0.03:
+                return {
+                    "approved": False,
+                    "reason": f"SL {sl_pct:.1%} exceeds maximum 3% per trade",
+                    "safe_quantity": 0,
+                }
 
         safe_qty = self.calculate_quantity(price)
         actual_qty = min(quantity, safe_qty)

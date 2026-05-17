@@ -460,7 +460,7 @@ class KitePortfolio:
         """Return available margin / cash balance."""
         return self._kite.margins()
 
-    def get_pnl(self) -> float:
+    def get_day_pnl(self) -> float:
         """Return total unrealised P&L across all open day positions."""
         positions = self.get_positions()
         day_positions: list[dict[str, Any]] = positions.get("day", [])

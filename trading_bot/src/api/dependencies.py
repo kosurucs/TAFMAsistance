@@ -45,11 +45,16 @@ from src.utils.risk_manager import RiskManager  # noqa: E402
 PAPER_TRADING: bool = os.environ.get("PAPER_TRADING", "true").lower() == "true"
 OPENING_CAPITAL: float = float(os.environ.get("OPENING_CAPITAL", "100000"))
 
+
 _kite: Any = None
-_data_fetcher: KiteDataFetcher | None = None
+_data_fetcher: Any = None
 _portfolio: KitePortfolio | None = None
 
-if not PAPER_TRADING:
+if PAPER_TRADING:
+    # In paper-trading mode, use stub data fetcher with historical data
+    from src.tools.stub_services import StubDataFetcher  # noqa: E402
+    _data_fetcher = StubDataFetcher()
+else:
     try:
         _auth = KiteAuthManager()
         _kite = _auth.get_kite_session()
@@ -136,7 +141,7 @@ def get_portfolio() -> KitePortfolio | None:
     return _portfolio
 
 
-def get_data_fetcher() -> KiteDataFetcher | None:
+def get_data_fetcher() -> Any:
     return _data_fetcher
 
 

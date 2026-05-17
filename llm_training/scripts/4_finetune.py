@@ -4,8 +4,11 @@ Step 4 – Fine-tune Mistral-7B with QLoRA using Unsloth.
 Works on a single NVIDIA GPU with 8 GB+ VRAM (e.g. RTX 3070/3080/4080).
 Training ~1 000 examples takes roughly 15-30 min on an RTX 3080.
 
+For 70k+ datasets, 2000–3000 steps are recommended. Adjust --steps based on your dataset size.
+
 Usage:
     python llm_training/scripts/4_finetune.py
+    python llm_training/scripts/4_finetune.py --steps 3000
 
 Output model saved to:  llm_training/models/trading_llm/
 
@@ -19,6 +22,7 @@ Requirements:
 
 from __future__ import annotations
 
+import argparse
 import os
 from pathlib import Path
 
@@ -39,7 +43,7 @@ LORA_DROPOUT  = 0.05
 BATCH_SIZE    = 2        # per-device; increase if you have > 12 GB VRAM
 GRAD_ACCUM    = 4        # effective batch = BATCH_SIZE * GRAD_ACCUM = 8
 LEARNING_RATE = 2e-4
-MAX_STEPS     = 500      # ~500 steps is enough for a good domain adaptation
+DEFAULT_STEPS = 2000     # Phase 5: default 2000 for larger datasets
 WARMUP_STEPS  = 50
 SAVE_STEPS    = 100
 LOG_STEPS     = 20
@@ -62,6 +66,17 @@ def _check_dataset() -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Fine-tune Mistral-7B for trading")
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=DEFAULT_STEPS,
+        help=f"Number of training steps (default: {DEFAULT_STEPS})"
+    )
+    args = parser.parse_args()
+    
+    max_steps = args.steps
+    
     _check_dataset()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -99,7 +114,7 @@ def main() -> None:
         data_files={"train": str(TRAIN_FILE), "eval": str(EVAL_FILE)},
         split={"train": "train", "eval": "eval"},
     )
-    print(f"Dataset loaded: {len(raw['train'])} train, {len(raw['eval'])} eval")
+    print(f"Datasemax_steps {len(raw['train'])} train, {len(raw['eval'])} eval")
 
     # ── 4. Training arguments ─────────────────────────────────────────────────
     from transformers import TrainingArguments

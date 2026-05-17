@@ -26,9 +26,18 @@ DATASET_DIR   = ROOT / "llm_training" / "data" / "dataset"
 
 BOOK_CHUNKS   = PROCESSED_DIR / "book_chunks.jsonl"
 INVESTO_CHUNKS = PROCESSED_DIR / "investopedia_chunks.jsonl"
+HISTORICAL_TRAIN = PROCESSED_DIR / "historical_train.jsonl"
+STRATEGY_RULES = PROCESSED_DIR / "strategy_rules.jsonl"
 
-EVAL_SPLIT = 0.05   # 5 % held out for evaluation
+EVAL_SPLIT = 0.30   # 30% held out for evaluation (Phase 5: 70/30 split)
 RANDOM_SEED = 42
+
+SOURCE_FILES = [
+    BOOK_CHUNKS,
+    INVESTO_CHUNKS,
+    HISTORICAL_TRAIN,
+    STRATEGY_RULES,
+]
 
 # ── Instruction templates ─────────────────────────────────────────────────────
 # The fine-tune uses Alpaca-style chat:
@@ -164,15 +173,25 @@ def main() -> None:
     DATASET_DIR.mkdir(parents=True, exist_ok=True)
     rng = random.Random(RANDOM_SEED)
 
+    # Load all available sources (only if they exist)
     book_records = load_jsonl(BOOK_CHUNKS)
     investo_records = load_jsonl(INVESTO_CHUNKS)
+    historical_records = load_jsonl(HISTORICAL_TRAIN)
+    strategy_records = load_jsonl(STRATEGY_RULES)
 
+    # Print per-source counts
+    print("Source data loaded:")
+    print(f"  Book chunks:           {len(book_records)}")
+    print(f"  Investopedia chunks:   {len(investo_records)}")
+    print(f"  Historical training:   {len(historical_records)}")
+    print(f"  Strategy rules:        {len(strategy_records)}")
+
+    # For book/investopedia, generate Q&A pairs
+    # For historical/strategy, they already are in Alpaca format
     all_records = book_records + investo_records
-    if not all_records:
-        print("[!] No source data found. Run steps 1 and/or 2 first.")
+    if not all_records and not historical_records and not strategy_records:
+        print("[!] No source data found. Run generation scripts first.")
         return
-
-    print(f"Source chunks: {len(book_records)} book + {len(investo_records)} investopedia = {len(all_records)} total")
 
     examples: list[dict] = []
     for rec in all_records:
@@ -206,6 +225,26 @@ def main() -> None:
 
             examples.append(to_chat_format(instruction, response, context))
 
+    # Add historical + strategy examples (already in correct format)
+    # These have "instruction", "input", "output" — convert to chat format
+    for rec in historical_records + strategy_records:
+        instruction = rec.get("instruction", "")
+        input_text = rec.get("input", "")
+        output_text = rec.get("output", "")
+        
+        if not instruction or not output_text:
+            continue
+        
+        # Build user message with instruction + input
+        user_msg = f"{instruction}\n\n{input_text}".strip() if input_text else instruction
+        
+        examples.append({
+            "text": (
+                f"<s>[INST] <<SYS>>\n{SYSTEM_PROMPT}\n<</SYS>>\n\n"
+                f"{user_msg} [/INST] {output_text} </s>"
+            )
+        })
+
     rng.shuffle(examples)
 
     # Train / eval split
@@ -220,6 +259,12 @@ def main() -> None:
 
     _write(DATASET_DIR / "train.jsonl", train_examples)
     _write(DATASET_DIR / "eval.jsonl", eval_examples)
+
+    print(f"\nDataset built:")
+    print(f"  Total examples: {len(examples)}")
+    print(f"  Train: {len(train_examples)} ({100*(1-EVAL_SPLIT):.0f}%)")
+    print(f"  Eval:  {len(eval_examples)} ({100*EVAL_SPLIT:.0f}%)")
+    print(f"Saved to: {DATASET_DIR}")
 
     print(f"Dataset built:  {len(train_examples)} train  |  {len(eval_examples)} eval")
     print(f"Saved to: {DATASET_DIR}")

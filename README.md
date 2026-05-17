@@ -1,6 +1,9 @@
 # TAFMAsistance - Autonomous AI Trading Agent
 
-A stateful, LLM-powered trading application for the **Indian Stock Market (NSE/BSE)**
+**ANALYSIS-ONLY MODE**: This system performs market analysis, technical indicator computation,
+and trade recommendations but does NOT execute trades. Order placement has been disabled.
+
+A stateful, LLM-powered trading analysis application for the **Indian Stock Market (NSE/BSE)**
 built on Zerodha Kite Connect and LangGraph.
 
 ---
@@ -18,7 +21,7 @@ llm_reasoning ----WAIT----> END
        | BUY / SELL
 risk_validator -- REJECTED --> END
        | APPROVED
-execute_order  (live Kite order or paper-trade simulation)
+execute_order  (ANALYSIS ONLY - logs recommendations, no actual trades)
        |
       END
 ```
@@ -27,7 +30,7 @@ execute_order  (live Kite order or paper-trade simulation)
 
 | Layer | File | Responsibility |
 |---|---|---|
-| **Broker** | `src/tools/kite_tools.py` | Auth (TOTP), OHLCV fetch, order placement, portfolio |
+| **Broker** | `src/tools/kite_tools.py` | Auth (TOTP), OHLCV fetch, portfolio (read-only) |
 | **Data** | `src/tools/data_pipeline.py` | OHLCV to pandas DataFrame, CSV cache |
 | **Kite client** | `src/tools/kite_client.py` | Factory: build authenticated `KiteConnect` from env vars |
 | **Market data** | `src/tools/market_data.py` | LTP, quote, OHLC, historical candles (batched, retried) |

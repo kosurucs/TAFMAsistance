@@ -65,3 +65,96 @@ def get_margins(
     portfolio: KitePortfolio = Depends(_require_portfolio),
 ) -> dict[str, Any]:
     return portfolio.get_margins()
+
+
+@router.get("/monitor", summary="Position monitoring status with exit signals")
+def get_monitor_status(
+    portfolio: KitePortfolio = Depends(_require_portfolio),
+) -> dict[str, Any]:
+    """
+    Returns current open positions with their monitoring status.
+    Runs ExitMonitor against all open positions and returns the signals.
+    """
+    from src.utils.exit_monitor import ExitMonitor
+    from src.utils.technical_analysis import compute_indicators
+    from src.tools.data_pipeline import DataPipeline
+    from src.tools.kite_tools import KiteDataFetcher
+    import os
+    
+    # Get open positions
+    positions_data = portfolio.get_positions()
+    day_positions = positions_data.get("day", [])
+    net_positions = positions_data.get("net", [])
+    all_positions = day_positions + net_positions
+    
+    if not all_positions:
+        return {"positions": [], "message": "No open positions", "count": 0}
+    
+    # Normalize positions for monitoring
+    normalized_positions = []
+    for pos in all_positions:
+        tradingsymbol = pos.get("tradingsymbol", "")
+        quantity = pos.get("quantity", 0)
+        if quantity == 0:
+            continue
+        
+        action = "BUY" if quantity > 0 else "SELL"
+        
+        normalized_positions.append({
+            "symbol": tradingsymbol,
+            "action": action,
+            "entry_price": float(pos.get("average_price", 0)),
+            "current_price": float(pos.get("last_price", 0)),
+            "sl": float(pos.get("sl", 0)) if pos.get("sl") else 0,
+            "tp": float(pos.get("tp", 0)) if pos.get("tp") else 0,
+            "quantity": abs(quantity),
+            "pnl": float(pos.get("pnl", 0)),
+            "beta": 1.0,
+        })
+    
+    # Get indicators for each position (simplified — no live data fetch in API)
+    indicators_by_symbol = {}
+    # In a full implementation, fetch live indicators here
+    # For now, return positions without detailed indicator-based signals
+    
+    monitor = ExitMonitor()
+    
+    # Return simplified monitoring data
+    monitored = []
+    for pos in normalized_positions:
+        # Basic check without full indicators
+        signal = monitor.should_exit(
+            action=pos["action"],
+            entry_price=pos["entry_price"],
+            current_price=pos["current_price"],
+            sl=pos["sl"],
+            tp=pos["tp"],
+            atr=0,  # Would need to fetch from indicators
+            volume=0,
+            avg_volume=0,
+            nifty_change_pct=0,
+            beta=pos["beta"],
+            rsi=50,
+        )
+        
+        monitored.append({
+            "symbol": pos["symbol"],
+            "action": pos["action"],
+            "entry_price": pos["entry_price"],
+            "current_price": pos["current_price"],
+            "sl": pos["sl"],
+            "tp": pos["tp"],
+            "pnl": pos["pnl"],
+            "exit_signal": {
+                "should_exit": signal.should_exit,
+                "reason": signal.reason,
+                "urgency": signal.urgency,
+                "adjusted_sl": signal.adjusted_sl,
+            },
+        })
+    
+    return {
+        "positions": monitored,
+        "count": len(monitored),
+        "message": f"Monitoring {len(monitored)} open positions"
+    }

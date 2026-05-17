@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+from loguru import logger
 
 try:
     import pandas_ta as ta  # type: ignore
@@ -151,12 +152,105 @@ def compute_indicators(df: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def compute_indicators_multi_timeframe(
+    symbol: str,
+    timeframe_dfs: dict[str, pd.DataFrame]
+) -> dict[str, dict]:
+    """
+    Compute technical indicators for multiple timeframes.
+    
+    Args:
+        symbol: NSE symbol (e.g. "RELIANCE")
+        timeframe_dfs: dict mapping timeframe label → OHLCV DataFrame
+                       e.g. {"1d": df_daily, "1h": df_hourly, "15min": df_15m}
+    
+    Returns:
+        dict mapping timeframe → indicators dict (same shape as compute_indicators returns)
+        Plus a top-level "confluence" key with aggregate scores.
+    """
+    result = {}
+    for tf, df in timeframe_dfs.items():
+        if df is not None and len(df) >= 20:
+            try:
+                result[tf] = compute_indicators(df)
+            except Exception as e:
+                logger.warning(f"MTF indicators failed for {symbol} {tf}: {e}")
+                result[tf] = {}
+        else:
+            result[tf] = {}
+    
+    # Compute MTF confluence score
+    bullish_count = 0
+    bearish_count = 0
+    total_tfs = len([tf for tf in result if result[tf]])
+    
+    for tf, ind in result.items():
+        if not ind:
+            continue
+        ema_fast = ind.get("ema_fast", 0)
+        ema_slow = ind.get("ema_slow", 0)
+        if ema_fast > ema_slow:
+            bullish_count += 1
+        elif ema_fast < ema_slow:
+            bearish_count += 1
+    
+    result["confluence"] = {
+        "bullish_count": bullish_count,
+        "bearish_count": bearish_count,
+        "total_timeframes": total_tfs,
+        "score": bullish_count - bearish_count,  # positive = bullish bias
+        "bias": "BULLISH" if bullish_count > bearish_count else ("BEARISH" if bearish_count > bullish_count else "NEUTRAL"),
+    }
+    return result
+
+
+def format_mtf_section(mtf_indicators: dict[str, dict]) -> str:
+    """
+    Format multi-timeframe indicator data as a string section for the LLM prompt.
+    Returns a formatted multi-line string like:
+    
+    Multi-Timeframe Analysis:
+      1D  : EMA9=2450 > EMA21=2380 → BULLISH | RSI=62 | MACD Bullish
+      1h  : EMA9=2440 < EMA21=2460 → BEARISH | RSI=44 | MACD Bearish
+      15min: EMA9=2448 > EMA21=2435 → BULLISH | RSI=58 | MACD Neutral
+    MTF Confluence: 2/3 BULLISH (score: +1) → Bias: BULLISH
+    """
+    lines = ["Multi-Timeframe Analysis:"]
+    tf_order = ["1d", "1h", "15min", "5min", "1min"]
+    
+    for tf in tf_order:
+        if tf not in mtf_indicators or not mtf_indicators[tf]:
+            continue
+        ind = mtf_indicators[tf]
+        ema9 = ind.get("ema_fast", 0)
+        ema21 = ind.get("ema_slow", 0)
+        trend = "BULLISH" if ema9 > ema21 else "BEARISH"
+        rsi = ind.get("rsi", 50)
+        macd_line = ind.get("macd", 0)
+        macd_signal = ind.get("macd_signal", 0)
+        macd_bias = "Bullish" if macd_line > macd_signal else "Bearish"
+        lines.append(
+            f"  {tf:<6}: EMA9={ema9:.0f} {'>' if ema9>ema21 else '<'} EMA21={ema21:.0f} → {trend}"
+            f" | RSI={rsi:.0f} | MACD {macd_bias}"
+        )
+    
+    conf = mtf_indicators.get("confluence", {})
+    if conf:
+        lines.append(
+            f"MTF Confluence: {conf['bullish_count']}/{conf['total_timeframes']} BULLISH"
+            f" (score: {conf['score']:+d}) → Bias: {conf['bias']}"
+        )
+    
+    return "\n".join(lines)
+
+
 def format_market_state_prompt(
     symbol: str,
     indicators: dict[str, Any],
+    mtf_indicators: dict | None = None
 ) -> str:
     """Render a structured prompt string for the LLM."""
-    return (
+    prompt = (
         f"Instruction: Analyse the current market state for {symbol}.\n"
         f"Market State:\n"
         f"  - Close Price  : {indicators['close']:.2f}\n"
@@ -174,9 +268,16 @@ def format_market_state_prompt(
         f"  - VWAP         : {indicators['vwap']:.2f}\n"
         f"  - Trend        : {indicators['trend']}\n"
         f"  - BB Signal    : {indicators['bb_signal']}\n"
+    )
+    
+    if mtf_indicators:
+        prompt += "\n" + format_mtf_section(mtf_indicators) + "\n"
+    
+    prompt += (
         f"Output: Respond ONLY with valid JSON of the form "
         '{"action": "BUY"|"SELL"|"WAIT", "reason": "<one sentence>"}'
     )
+    return prompt
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

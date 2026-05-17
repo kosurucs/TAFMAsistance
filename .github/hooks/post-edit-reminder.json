@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "windows": "powershell -NoProfile -File .github/hooks/scripts/post-edit-check.ps1",
+        "command": "cat /dev/stdin | python3 -c \"import sys,json; d=json.load(sys.stdin); tools=['replace_string_in_file','multi_replace_string_in_file','create_file']; p=d.get('toolInput',{}).get('filePath',''); print(json.dumps({'systemMessage':'Code changed. Run /sync-docs to keep .github/instructions/ up to date.'}) if d.get('toolName') in tools and any(x in p for x in ['trading_bot/','trading_ui/src','llm_training/']) else '{}')\"",
+        "timeout": 10
+      }
+    ]
+  }
+}

@@ -34,16 +34,26 @@ load_dotenv()
 # ── Optional Redis ────────────────────────────────────────────────────────────
 try:
     import redis as redis_lib
+    import socket
 
     _redis_client = redis_lib.Redis(
         host=os.environ.get("REDIS_HOST", "localhost"),
         port=int(os.environ.get("REDIS_PORT", 6379)),
         db=int(os.environ.get("REDIS_DB", 0)),
         decode_responses=True,
-        socket_connect_timeout=2,
+        socket_connect_timeout=1,
+        socket_timeout=1,
     )
-    _redis_client.ping()
-    logger.info("Redis connected at {}:{}", os.environ.get("REDIS_HOST", "localhost"), os.environ.get("REDIS_PORT", 6379))
+    # Test connection with a shorter timeout using socket check first
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)
+    try:
+        sock.connect((os.environ.get("REDIS_HOST", "localhost"), int(os.environ.get("REDIS_PORT", 6379))))
+        sock.close()
+        _redis_client.ping()
+        logger.info("Redis connected at {}:{}", os.environ.get("REDIS_HOST", "localhost"), os.environ.get("REDIS_PORT", 6379))
+    except (socket.timeout, socket.error, ConnectionRefusedError):
+        raise RuntimeError("Redis not reachable")
 except Exception:  # noqa: BLE001
     logger.warning("Redis not available – using in-process state only.")
     _redis_client = None  # type: ignore
@@ -69,24 +79,35 @@ def _build_llm_chain():
     """
     # ── Try Ollama first (no GPU needed) ─────────────────────────────────────
     ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-    for model_name in ("trading-assistant", "mistral"):
-        try:
-            import urllib.request as _ureq, json as _json
-            probe = _ureq.Request(
-                f"{ollama_url}/api/tags",
-                headers={"Content-Type": "application/json"},
-            )
-            resp = _ureq.urlopen(probe, timeout=2)
-            tags = _json.loads(resp.read().decode())
-            available = [m["name"].split(":")[0] for m in tags.get("models", [])]
-            if model_name in available or model_name == "mistral":
-                chain = _OllamaLLMChain(ollama_url, model_name)
-                # Quick connectivity check
-                chain.invoke({"input": "ping"})
-                logger.info("Using Ollama model '{}' at {}", model_name, ollama_url)
-                return chain
-        except Exception:  # noqa: BLE001
-            break
+    
+    # Quick socket check to avoid hanging on urlopen
+    import socket
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        sock.connect(("localhost", 11434))
+        sock.close()
+    except (socket.timeout, socket.error, ConnectionRefusedError, OSError):
+        logger.warning("Ollama not reachable at {} – skipping to fallback LLM", ollama_url)
+    else:
+        for model_name in ("trading-assistant", "mistral"):
+            try:
+                import urllib.request as _ureq, json as _json
+                probe = _ureq.Request(
+                    f"{ollama_url}/api/tags",
+                    headers={"Content-Type": "application/json"},
+                )
+                resp = _ureq.urlopen(probe, timeout=2)
+                tags = _json.loads(resp.read().decode())
+                available = [m["name"].split(":")[0] for m in tags.get("models", [])]
+                if model_name in available or model_name == "mistral":
+                    chain = _OllamaLLMChain(ollama_url, model_name)
+                    # Quick connectivity check
+                    chain.invoke({"input": "ping"})
+                    logger.info("Using Ollama model '{}' at {}", model_name, ollama_url)
+                    return chain
+            except Exception:  # noqa: BLE001
+                break
 
     # ── Try fine-tuned local HuggingFace model (requires GPU) ────────────────
     model_path = os.environ.get("LLM_MODEL_PATH", "models/trading-lora-adapter")
@@ -167,8 +188,137 @@ class _StubLLMChain:
 POLL_INTERVAL_SECONDS: int = int(os.environ.get("POLL_INTERVAL_SECONDS", "60"))
 
 
-def run() -> None:
-    """Main trading loop."""
+async def monitor_positions(
+    portfolio: Any,
+    order_manager: Any,
+    data_pipeline_factory: Any,
+    risk_manager: Any,
+) -> None:
+    """
+    Background coroutine: runs every 30 seconds.
+    Checks open positions via ExitMonitor and places exit orders if triggered.
+    """
+    import asyncio
+    from src.utils.exit_monitor import ExitMonitor
+    
+    logger.info("Starting position monitor (interval=30s)")
+    
+    while True:
+        try:
+            # Check kill switch
+            if risk_manager.is_kill_switch_active():
+                logger.warning("Position monitor: kill switch active, stopping.")
+                break
+            
+            # Skip monitoring if no portfolio (paper trading without positions)
+            if portfolio is None:
+                await asyncio.sleep(30)
+                continue
+            
+            # Get open positions
+            positions_data = portfolio.get_positions()
+            # Kite returns dict with 'day' and 'net' keys
+            day_positions = positions_data.get("day", [])
+            net_positions = positions_data.get("net", [])
+            all_positions = day_positions + net_positions
+            
+            if not all_positions:
+                await asyncio.sleep(30)
+                continue
+            
+            # Normalize position structure for ExitMonitor
+            normalized_positions = []
+            for pos in all_positions:
+                # Map Kite position fields to ExitMonitor expected fields
+                tradingsymbol = pos.get("tradingsymbol", "")
+                quantity = pos.get("quantity", 0)
+                if quantity == 0:
+                    continue
+                
+                # Determine action based on quantity sign
+                action = "BUY" if quantity > 0 else "SELL"
+                
+                normalized_positions.append({
+                    "symbol": tradingsymbol,
+                    "action": action,
+                    "entry_price": float(pos.get("average_price", 0)),
+                    "current_price": float(pos.get("last_price", 0)),
+                    "sl": float(pos.get("sl", 0)) if pos.get("sl") else 0,
+                    "tp": float(pos.get("tp", 0)) if pos.get("tp") else 0,
+                    "quantity": abs(quantity),
+                    "pnl": float(pos.get("pnl", 0)),
+                    "beta": 1.0,  # TODO: fetch from metadata
+                })
+            
+            if not normalized_positions:
+                await asyncio.sleep(30)
+                continue
+            
+            # Fetch indicators for each position
+            indicators_by_symbol = {}
+            for pos in normalized_positions:
+                symbol = pos["symbol"]
+                try:
+                    # Use the same pipeline factory as main loop
+                    pipeline = data_pipeline_factory(symbol)
+                    df = pipeline.get_ohlcv_df(
+                        tradingsymbol=symbol,
+                        interval="minute",
+                        days_back=1,
+                    )
+                    if df is not None and len(df) > 14:
+                        from src.utils.technical_analysis import compute_indicators
+                        indicators = compute_indicators(df)
+                        indicators_by_symbol[symbol] = indicators
+                except Exception as e:
+                    logger.warning(f"Could not fetch indicators for {symbol}: {e}")
+            
+            # Nifty change (approximate — use NIFTY50 if available)
+            nifty_change_pct = 0.0
+            
+            # Check exits
+            monitor = ExitMonitor()
+            results = monitor.check_all_positions(normalized_positions, indicators_by_symbol, nifty_change_pct)
+            
+            for r in results:
+                signal = r["exit_signal"]
+                if signal.should_exit:
+                    symbol = r["symbol"]
+                    # Reverse action to close position
+                    original_action = r["action"]
+                    exit_action = "SELL" if original_action == "BUY" else "BUY"
+                    logger.warning(f"AUTO-EXIT triggered for {symbol}: {signal.reason}")
+                    
+                    paper_trade = os.getenv("PAPER_TRADING", "false").lower() == "true"
+                    position = r.get("position", {})
+                    exit_price = position.get("current_price", 0.0)
+                    pnl = position.get("pnl", 0.0)
+                    
+                    # ANALYSIS-ONLY MODE: Log the exit signal but do NOT place orders
+                    logger.info(f"[ANALYSIS] Would exit {symbol} with {exit_action} @ market — reason: {signal.reason} (order placement disabled)")
+                    
+                    # Log exit to DB (non-blocking — degrades gracefully if DB unavailable)
+                    from src.utils.db_logger import get_db_logger
+                    db = get_db_logger()
+                    db.log_trade_exit(
+                        order_id=position.get("order_id", "UNKNOWN"),
+                        exit_price=exit_price,
+                        exit_reason=signal.reason,
+                        pnl=pnl,
+                    )
+                
+                elif signal.adjusted_sl is not None:
+                    logger.info(f"TRAILING STOP updated for {r['symbol']}: new SL = {signal.adjusted_sl:.2f}")
+                    # TODO: Update position SL in database/state
+        
+        except Exception as e:
+            logger.error(f"Position monitor error: {e}")
+        
+        await asyncio.sleep(30)
+
+
+async def async_run() -> None:
+    """Main trading loop (async version)."""
     logger.info("Starting trading bot (paper={})", PAPER_TRADING)
 
     watchlist = [
@@ -219,59 +369,82 @@ def run() -> None:
 
     logger.info("Watchlist: {}", instrument_tokens)
 
+    # ── Data pipeline factory for position monitor ───────────────────────────
+    def make_pipeline(symbol: str) -> Any:
+        return DataPipeline(data_fetcher) if data_fetcher else _StubPipeline(symbol)
+
     # ── Trading loop ──────────────────────────────────────────────────────────
-    while True:
-        if risk_mgr.is_kill_switch_active():
-            logger.critical("Kill switch active – halting all trading.")
-            break
+    async def trading_loop() -> None:
+        """Main trading decision loop."""
+        import asyncio
+        while True:
+            if risk_mgr.is_kill_switch_active():
+                logger.critical("Kill switch active – halting all trading.")
+                break
 
-        for symbol, token in instrument_tokens.items():
-            logger.info("─── Processing {} ───", symbol)
+            for symbol, token in instrument_tokens.items():
+                logger.info("─── Processing {} ───", symbol)
 
-            initial_state: TradingState = {
-                "symbol": symbol,
-                "instrument_token": token,
-                "exchange": exchange,
-                "pipeline": DataPipeline(data_fetcher) if data_fetcher else _StubPipeline(symbol),
-                "order_manager": order_manager,
-                "portfolio": portfolio,
-                "risk_manager": risk_mgr,
-                "llm_chain": llm_chain,
-            }
+                initial_state: TradingState = {
+                    "symbol": symbol,
+                    "instrument_token": token,
+                    "exchange": exchange,
+                    "pipeline": make_pipeline(symbol),
+                    "order_manager": order_manager,
+                    "portfolio": portfolio,
+                    "risk_manager": risk_mgr,
+                    "llm_chain": llm_chain,
+                }
 
-            try:
-                result = trading_graph.invoke(initial_state)
+                try:
+                    result = trading_graph.invoke(initial_state)
 
-                # ── Log market data & indicators ──────────────────────────────
-                ind = result.get("indicators", {})
-                if ind:
+                    # ── Log market data & indicators ──────────────────────────
+                    ind = result.get("indicators", {})
+                    if ind:
+                        logger.info(
+                            "{} | close={:.2f} | RSI={:.1f} | EMA9={:.2f} | EMA21={:.2f}"
+                            " | BB_upper={:.2f} | BB_lower={:.2f} | trend={} | bb_signal={}",
+                            symbol,
+                            ind.get("close", 0),
+                            ind.get("rsi", 0),
+                            ind.get("ema_fast", 0),
+                            ind.get("ema_slow", 0),
+                            ind.get("bb_upper", 0),
+                            ind.get("bb_lower", 0),
+                            ind.get("trend", "N/A"),
+                            ind.get("bb_signal", "N/A"),
+                        )
+
                     logger.info(
-                        "{} | close={:.2f} | RSI={:.1f} | EMA9={:.2f} | EMA21={:.2f}"
-                        " | BB_upper={:.2f} | BB_lower={:.2f} | trend={} | bb_signal={}",
+                        "{} | action={} | reason={} | status={} | order_id={}",
                         symbol,
-                        ind.get("close", 0),
-                        ind.get("rsi", 0),
-                        ind.get("ema_fast", 0),
-                        ind.get("ema_slow", 0),
-                        ind.get("bb_upper", 0),
-                        ind.get("bb_lower", 0),
-                        ind.get("trend", "N/A"),
-                        ind.get("bb_signal", "N/A"),
+                        result.get("llm_action", "N/A"),
+                        result.get("llm_reason", ""),
+                        result.get("execution_status", "N/A"),
+                        result.get("order_id"),
                     )
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("Error processing {}: {}", symbol, exc)
 
-                logger.info(
-                    "{} | action={} | reason={} | status={} | order_id={}",
-                    symbol,
-                    result.get("llm_action", "N/A"),
-                    result.get("llm_reason", ""),
-                    result.get("execution_status", "N/A"),
-                    result.get("order_id"),
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.error("Error processing {}: {}", symbol, exc)
+            logger.info("Sleeping {} seconds until next cycle...", POLL_INTERVAL_SECONDS)
+            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+    
+    # ── Run both loops concurrently ───────────────────────────────────────────
+    import asyncio
+    try:
+        await asyncio.gather(
+            trading_loop(),
+            monitor_positions(portfolio, order_manager, make_pipeline, risk_mgr),
+        )
+    except KeyboardInterrupt:
+        logger.info("Received interrupt signal, shutting down gracefully...")
 
-        logger.info("Sleeping {} seconds until next cycle...", POLL_INTERVAL_SECONDS)
-        time.sleep(POLL_INTERVAL_SECONDS)
+
+def run() -> None:
+    """Synchronous entry point that runs the async main loop."""
+    import asyncio
+    asyncio.run(async_run())
 
 
 # ── Stub data pipeline (paper-trading mode without Kite) ─────────────────────

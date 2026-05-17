@@ -61,6 +61,11 @@ app.add_middleware(
 )
 
 EXCHANGE = os.environ.get("EXCHANGE", "NSE")
+SUPPORTED_EXCHANGES = [
+    ex.strip().upper() 
+    for ex in os.environ.get("SUPPORTED_EXCHANGES", "NSE").split(",") 
+    if ex.strip()
+]
 DEFAULT_CANDLE_LIMIT = int(os.environ.get("UI_CANDLE_LIMIT", "2000"))
 
 
@@ -113,25 +118,33 @@ def _init_kite_session(force: bool = False) -> None:
     """Initialise Kite-dependent singletons lazily."""
     global _auth, _kite, _data_fetcher, _instruments, _market, _pipeline
 
-    if PAPER_TRADING:
-        return
-
     with _session_lock:
-        if not force and _kite is not None and _data_fetcher is not None and _instruments is not None and _market is not None and _pipeline is not None:
+        if not force and _data_fetcher is not None and _market is not None and _pipeline is not None:
             return
 
-        _auth = KiteAuthManager()
-        _kite = _auth.get_kite_session()
-        _data_fetcher = KiteDataFetcher(_kite)
-        _instruments = InstrumentsCache(_kite)
-        _market = MarketData(_kite)
-        _pipeline = DataPipeline(_data_fetcher)
+        if PAPER_TRADING:
+            # Initialize stub objects for paper-trading mode
+            from src.tools.stub_services import StubDataFetcher, StubMarketData, StubDataPipeline
+            
+            _data_fetcher = StubDataFetcher()
+            _instruments = None  # Not needed in paper trading
+            _market = StubMarketData()
+            _pipeline = StubDataPipeline()
+            logger.info("API – Initialized stub services for paper-trading mode")
+        else:
+            _auth = KiteAuthManager()
+            _kite = _auth.get_kite_session()
+            _data_fetcher = KiteDataFetcher(_kite)
+            _instruments = InstrumentsCache(_kite)
+            _market = MarketData(_kite)
+            _pipeline = DataPipeline(_data_fetcher)
+            
+            # Pre-load instruments for all supported exchanges
+            logger.info("Pre-loading instruments for exchanges: {}", SUPPORTED_EXCHANGES)
+            _instruments.warm_up(SUPPORTED_EXCHANGES)
 
 
 def _require_kite_session() -> None:
-    if PAPER_TRADING:
-        return
-
     try:
         _init_kite_session()
     except KeyError as exc:
@@ -317,28 +330,55 @@ def get_watchlist() -> dict[str, Any]:
 
 
 @app.get("/api/symbols")
-def get_symbols(search: str = "") -> dict[str, Any]:
-    """Return all NSE instruments, optionally filtered by search string."""
+def get_symbols(search: str = "", exchange: str = "") -> dict[str, Any]:
+    """Return instruments from supported exchanges, optionally filtered by search string.
+    
+    Args:
+        search: Filter by symbol or name (case-insensitive substring match)
+        exchange: Filter by specific exchange (e.g., NSE, NFO). If empty, searches all supported exchanges.
+    """
     _require_kite_session()
     if _instruments is None:
         raise HTTPException(status_code=503, detail="Kite instruments service is not initialized.")
 
     try:
-        df = _instruments.get_all_instruments(EXCHANGE)
-        base_df = df
-        # Keep only EQ segment for clean dropdown
-        if "segment" in df.columns:
-            eq_df = df[df["segment"].astype(str).str.upper() == f"{EXCHANGE}-EQ"]
-            if not eq_df.empty:
-                df = eq_df
-        elif "instrument_type" in df.columns:
-            eq_df = df[df["instrument_type"].astype(str).str.upper() == "EQ"]
-            if not eq_df.empty:
-                df = eq_df
-
-        # Safety fallback: never return an empty universe because of schema drift.
-        if df.empty:
-            df = base_df
+        # Determine which exchanges to search
+        if exchange:
+            exchanges_to_search = [exchange.upper()]
+        else:
+            exchanges_to_search = SUPPORTED_EXCHANGES
+        
+        # Collect instruments from all requested exchanges
+        all_instruments = []
+        for exch in exchanges_to_search:
+            try:
+                df = _instruments.get_all_instruments(exch)
+                
+                # For NSE/BSE, keep only EQ segment for equities
+                if exch in ("NSE", "BSE"):
+                    base_df = df
+                    if "segment" in df.columns:
+                        eq_df = df[df["segment"].astype(str).str.upper() == f"{exch}-EQ"]
+                        if not eq_df.empty:
+                            df = eq_df
+                    elif "instrument_type" in df.columns:
+                        eq_df = df[df["instrument_type"].astype(str).str.upper() == "EQ"]
+                        if not eq_df.empty:
+                            df = eq_df
+                    if df.empty:
+                        df = base_df
+                
+                # For NFO/MCX/CDS, include all derivatives
+                all_instruments.append(df)
+            except Exception as e:
+                logger.warning(f"Failed to get instruments for {exch}: {e}")
+                continue
+        
+        if not all_instruments:
+            return {"symbols": []}
+        
+        import pandas as pd
+        df = pd.concat(all_instruments, ignore_index=True)
 
         if search:
             query = search.strip().lower()
@@ -375,8 +415,18 @@ def get_symbols(search: str = "") -> dict[str, Any]:
             ranked.loc[name_lower.loc[ranked.index].str.contains(query, regex=False, na=False), "_rank"] = ranked["_rank"].where(ranked["_rank"] < 2, 2)
             df = ranked.sort_values(["_rank", "tradingsymbol"]).drop(columns=["_rank"])
 
+        # Include exchange and instrument_type in results for better UX
+        cols_to_include = ["tradingsymbol", "name", "instrument_token", "exchange"]
+        if "instrument_type" in df.columns:
+            cols_to_include.append("instrument_type")
+        if "expiry" in df.columns:
+            cols_to_include.append("expiry")
+        if "lot_size" in df.columns:
+            cols_to_include.append("lot_size")
+        
+        available_cols = [col for col in cols_to_include if col in df.columns]
         results = (
-            df[["tradingsymbol", "name", "instrument_token"]]
+            df[available_cols]
             .fillna("")
             .head(500)
             .to_dict(orient="records")
@@ -389,24 +439,45 @@ def get_symbols(search: str = "") -> dict[str, Any]:
 
 @app.get("/api/market-data/{symbol}")
 def get_market_data(symbol: str, days_back: int = 0, interval: str = "minute", limit: int = DEFAULT_CANDLE_LIMIT) -> dict[str, Any]:
-    """Return OHLCV candles + computed indicators for *symbol*."""
+    """Return OHLCV candles + computed indicators for *symbol*.
+    
+    Args:
+        symbol: Trading symbol, optionally with exchange prefix (e.g., 'RELIANCE', 'NFO:NIFTY26MAYFUT')
+        days_back: Number of days of historical data to fetch
+        interval: Candle interval (minute, day, hour)
+        limit: Maximum number of candles to return
+    """
     _require_kite_session()
-    if _instruments is None or _pipeline is None:
+    if _pipeline is None:
         raise HTTPException(status_code=503, detail="Kite market services are not initialized.")
 
-    try:
-        token = _instruments.get_instrument_token(EXCHANGE, symbol)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found on {EXCHANGE}")
-    except Exception as exc:
-        logger.error("Token lookup failed for {} on {}: {}", symbol, EXCHANGE, exc)
-        raise HTTPException(status_code=503, detail=f"Token lookup temporarily unavailable: {exc}")
+    # Parse exchange prefix if present (e.g., "NFO:NIFTY26MAYFUT" -> exchange="NFO", tradingsymbol="NIFTY26MAYFUT")
+    if ":" in symbol:
+        exchange, tradingsymbol = symbol.split(":", 1)
+        exchange = exchange.upper()
+    else:
+        exchange = EXCHANGE
+        tradingsymbol = symbol
+
+    # In paper trading mode, instruments cache is not used - stub uses symbol directly
+    if PAPER_TRADING:
+        token = 0  # Stub doesn't use token
+    else:
+        if _instruments is None:
+            raise HTTPException(status_code=503, detail="Instruments cache not initialized.")
+        try:
+            token = _instruments.get_instrument_token(exchange, tradingsymbol)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Symbol '{tradingsymbol}' not found on {exchange}")
+        except Exception as exc:
+            logger.error("Token lookup failed for {} on {}: {}", tradingsymbol, exchange, exc)
+            raise HTTPException(status_code=503, detail=f"Token lookup temporarily unavailable: {exc}")
 
     try:
         resolved_days_back = _resolve_days_back(interval, days_back)
         df = _pipeline.get_ohlcv_df(
             instrument_token=token,
-            tradingsymbol=symbol,
+            tradingsymbol=tradingsymbol,
             interval=interval,
             days_back=resolved_days_back,
         )
@@ -414,7 +485,7 @@ def get_market_data(symbol: str, days_back: int = 0, interval: str = "minute", l
         raise HTTPException(status_code=502, detail=f"Failed to fetch OHLCV: {exc}")
 
     if df.empty:
-        raise HTTPException(status_code=404, detail=f"No OHLCV data for '{symbol}'")
+        raise HTTPException(status_code=404, detail=f"No OHLCV data for '{tradingsymbol}' on {exchange}")
 
     # Keep payload bounded for the UI even when a deep history window is fetched.
     if limit <= 0:
@@ -422,10 +493,17 @@ def get_market_data(symbol: str, days_back: int = 0, interval: str = "minute", l
     if len(df) > limit:
         df = df.tail(limit)
 
+    # Remove duplicate timestamps - lightweight-charts requires strictly ascending times
+    df = df[~df.index.duplicated(keep='first')]
+    # Ensure data is sorted ascending after duplicate removal
+    df = df.sort_index()
+
     # Convert DataFrame to list of candle dicts for the frontend
     df_out = df.reset_index()
     time_col = df_out.columns[0]  # first col is datetime index
     candles = []
+    seen_timestamps = set()
+    
     for _, row in df_out.iterrows():
         dt = row[time_col]
         # Kite may return timezone-naive datetimes that are implicitly IST.
@@ -433,8 +511,16 @@ def get_market_data(symbol: str, days_back: int = 0, interval: str = "minute", l
         # frontend (which uses Asia/Kolkata localization) shows correct times.
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=_IST)
+        
+        timestamp = int(dt.timestamp())
+        
+        # Skip duplicate timestamps (lightweight-charts requirement)
+        if timestamp in seen_timestamps:
+            continue
+        seen_timestamps.add(timestamp)
+        
         candles.append({
-            "time": int(dt.timestamp()),
+            "time": timestamp,
             "open":  round(float(row["open"]),  2),
             "high":  round(float(row["high"]),  2),
             "low":   round(float(row["low"]),   2),
@@ -446,12 +532,12 @@ def get_market_data(symbol: str, days_back: int = 0, interval: str = "minute", l
     try:
         indicators = compute_indicators(df)
     except Exception as exc:
-        logger.warning("Indicator computation failed for {}: {}", symbol, exc)
+        logger.warning("Indicator computation failed for {}: {}", tradingsymbol, exc)
         indicators = {}
 
     return {
-        "symbol": symbol,
-        "exchange": EXCHANGE,
+        "symbol": tradingsymbol,
+        "exchange": exchange,
         "interval": interval,
         "candles": candles,
         "indicators": indicators,
@@ -460,16 +546,37 @@ def get_market_data(symbol: str, days_back: int = 0, interval: str = "minute", l
 
 @app.get("/api/quote/{symbol}")
 def get_quote(symbol: str) -> dict[str, Any]:
-    """Return latest LTP and depth for *symbol*."""
+    """Return latest LTP and depth for *symbol*.
+    
+    Args:
+        symbol: Trading symbol, optionally with exchange prefix (e.g., 'RELIANCE', 'NFO:NIFTY26MAYFUT')
+    """
     _require_kite_session()
     if _market is None:
         raise HTTPException(status_code=503, detail="Kite quote service is not initialized.")
 
+    # Parse exchange prefix if present
+    if ":" in symbol:
+        exchange, tradingsymbol = symbol.split(":", 1)
+        exchange = exchange.upper()
+    else:
+        exchange = EXCHANGE
+        tradingsymbol = symbol
+    
+    quote_key = f"{exchange}:{tradingsymbol}"
+    
     try:
-        quote = _market.get_quote([f"{EXCHANGE}:{symbol}"])
-        data = quote.get(f"{EXCHANGE}:{symbol}", {})
+        quote = _market.get_quote([quote_key])
+        data = quote.get(quote_key, {})
+        
+        # Extract market depth (bid/ask) data
+        depth = data.get("depth", {})
+        buy_orders = depth.get("buy", [])[:5]  # Top 5 buy orders
+        sell_orders = depth.get("sell", [])[:5]  # Top 5 sell orders
+        
         return {
-            "symbol": symbol,
+            "symbol": tradingsymbol,
+            "exchange": exchange,
             "ltp": data.get("last_price", 0),
             "open": data.get("ohlc", {}).get("open", 0),
             "high": data.get("ohlc", {}).get("high", 0),
@@ -478,6 +585,10 @@ def get_quote(symbol: str) -> dict[str, Any]:
             "volume": data.get("volume", 0),
             "change": data.get("net_change", 0),
             "change_pct": data.get("oi_day_change_percentage", 0),
+            "depth": {
+                "buy": [{"price": o.get("price", 0), "quantity": o.get("quantity", 0), "orders": o.get("orders", 0)} for o in buy_orders],
+                "sell": [{"price": o.get("price", 0), "quantity": o.get("quantity", 0), "orders": o.get("orders", 0)} for o in sell_orders],
+            },
         }
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
@@ -863,163 +974,36 @@ VALID_VALIDITY = {"DAY", "IOC", "TTL"}
 def place_order(body: OrderRequest) -> dict[str, Any]:
     """Place a manual buy/sell order (paper or live).
 
-    Supports all Kite varieties: regular, amo, co, iceberg, auction.
+    DISABLED: Order placement has been removed from this system.
     """
-    _require_kite_session()
-    symbol = body.symbol.upper()
-    tx = body.transaction_type.upper()
-    variety = body.variety.lower()
-    ot = body.order_type.upper()
-    product = body.product.upper()
-    validity = body.validity.upper()
-
-    if tx not in ("BUY", "SELL"):
-        raise HTTPException(status_code=400, detail="transaction_type must be BUY or SELL.")
-    if variety not in VALID_VARIETIES:
-        raise HTTPException(status_code=400, detail=f"variety must be one of {sorted(VALID_VARIETIES)}.")
-    if ot not in VALID_ORDER_TYPES:
-        raise HTTPException(status_code=400, detail=f"order_type must be one of {sorted(VALID_ORDER_TYPES)}.")
-    if product not in VALID_PRODUCTS:
-        raise HTTPException(status_code=400, detail=f"product must be one of {sorted(VALID_PRODUCTS)}.")
-    if validity not in VALID_VALIDITY:
-        raise HTTPException(status_code=400, detail=f"validity must be one of {sorted(VALID_VALIDITY)}.")
-    if body.quantity <= 0:
-        raise HTTPException(status_code=400, detail="quantity must be > 0.")
-    if ot in ("LIMIT", "SL") and not body.price:
-        raise HTTPException(status_code=400, detail=f"price is required for order_type={ot}.")
-    if ot in ("SL", "SL-M") and not body.trigger_price:
-        raise HTTPException(status_code=400, detail=f"trigger_price is required for order_type={ot}.")
-    if variety == "iceberg" and not body.iceberg_legs:
-        raise HTTPException(status_code=400, detail="iceberg_legs is required for variety=iceberg.")
-    if validity == "TTL" and not body.validity_ttl:
-        raise HTTPException(status_code=400, detail="validity_ttl (minutes) is required for validity=TTL.")
-
-    if PAPER_TRADING or _kite is None:
-        import time as _time
-        order_id = f"PAPER-{int(_time.time() * 1000)}"
-        return {
-            "order_id": order_id,
-            "status": "COMPLETE",
-            "paper_trading": True,
-            "symbol": symbol,
-            "variety": variety,
-            "transaction_type": tx,
-            "quantity": body.quantity,
-            "order_type": ot,
-            "product": product,
-            "price": body.price,
-            "trigger_price": body.trigger_price,
-            "validity": validity,
-            "tag": body.tag,
-        }
-
-    try:
-        kw: dict[str, Any] = dict(
-            variety=variety,
-            exchange=body.exchange.upper(),
-            tradingsymbol=symbol,
-            transaction_type=tx,
-            quantity=body.quantity,
-            product=product,
-            order_type=ot,
-            validity=validity,
-            tag=body.tag or "tafm_ui",
-        )
-        if ot not in ("MARKET", "SL-M"):
-            kw["price"] = body.price
-        if ot in ("SL", "SL-M"):
-            kw["trigger_price"] = body.trigger_price
-        if body.disclosed_quantity:
-            kw["disclosed_quantity"] = body.disclosed_quantity
-        if validity == "TTL" and body.validity_ttl:
-            kw["validity_ttl"] = body.validity_ttl
-        if variety == "iceberg":
-            kw["iceberg_legs"] = body.iceberg_legs
-            if body.iceberg_quantity:
-                kw["iceberg_quantity"] = body.iceberg_quantity
-        if variety == "auction" and body.auction_number:
-            kw["auction_number"] = body.auction_number
-        if ot in ("MARKET", "SL-M") and body.market_protection is not None:
-            kw["market_protection"] = body.market_protection
-        if body.autoslice:
-            kw["autoslice"] = True
-
-        result = _kite.place_order(**kw)
-        # autoslice returns a list; regular returns an order_id
-        if isinstance(result, list):
-            return {
-                "order_ids": [r.get("order_id") for r in result if "order_id" in r],
-                "slices": result,
-                "status": "OPEN",
-                "paper_trading": False,
-                "autoslice": True,
-            }
-        return {
-            "order_id": str(result),
-            "status": "OPEN",
-            "paper_trading": False,
-            "symbol": symbol,
-            "variety": variety,
-            "transaction_type": tx,
-            "quantity": body.quantity,
-            "order_type": ot,
-            "product": product,
-            "price": body.price,
-        }
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Order placement failed: {exc}") from exc
+    raise HTTPException(
+        status_code=403,
+        detail="Order placement has been disabled. This system is for analysis only."
+    )
 
 
 @app.put("/api/order/{variety}/{order_id}")
 def modify_order(variety: str, order_id: str, body: OrderModifyRequest) -> dict[str, Any]:
-    """Modify an open or pending order."""
-    variety = variety.lower()
-    if variety not in VALID_VARIETIES:
-        raise HTTPException(status_code=400, detail=f"variety must be one of {sorted(VALID_VARIETIES)}.")
-
-    if PAPER_TRADING or _kite is None:
-        return {"order_id": order_id, "paper_trading": True}
-
-    try:
-        kw: dict[str, Any] = {"variety": variety, "order_id": order_id}
-        if body.order_type:
-            kw["order_type"] = body.order_type.upper()
-        if body.quantity is not None:
-            kw["quantity"] = body.quantity
-        if body.price is not None:
-            kw["price"] = body.price
-        if body.trigger_price is not None:
-            kw["trigger_price"] = body.trigger_price
-        if body.disclosed_quantity is not None:
-            kw["disclosed_quantity"] = body.disclosed_quantity
-        if body.validity:
-            kw["validity"] = body.validity.upper()
-        if body.parent_order_id:
-            kw["parent_order_id"] = body.parent_order_id
-        _kite.modify_order(**kw)
-        return {"order_id": order_id, "paper_trading": False}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Order modify failed: {exc}") from exc
+    """Modify an open or pending order.
+    
+    DISABLED: Order modification has been removed from this system.
+    """
+    raise HTTPException(
+        status_code=403,
+        detail="Order modification has been disabled. This system is for analysis only."
+    )
 
 
 @app.delete("/api/order/{variety}/{order_id}")
 def cancel_order(variety: str, order_id: str, parent_order_id: str | None = None) -> dict[str, Any]:
-    """Cancel an open or pending order."""
-    variety = variety.lower()
-    if variety not in VALID_VARIETIES:
-        raise HTTPException(status_code=400, detail=f"variety must be one of {sorted(VALID_VARIETIES)}.")
-
-    if PAPER_TRADING or _kite is None:
-        return {"order_id": order_id, "paper_trading": True}
-
-    try:
-        kw: dict[str, Any] = {"variety": variety, "order_id": order_id}
-        if parent_order_id:
-            kw["parent_order_id"] = parent_order_id
-        _kite.cancel_order(**kw)
-        return {"order_id": order_id, "paper_trading": False}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Order cancel failed: {exc}") from exc
+    """Cancel an open or pending order.
+    
+    DISABLED: Order cancellation has been removed from this system.
+    """
+    raise HTTPException(
+        status_code=403,
+        detail="Order cancellation has been disabled. This system is for analysis only."
+    )
 
 
 @app.get("/api/orders")
@@ -1311,51 +1295,14 @@ _paper_gtt_seq: int = 1_000_000
 
 @app.post("/api/gtt")
 def place_gtt(body: GTTRequest) -> dict[str, Any]:
-    """Place a GTT trigger (single or two-leg / OCO)."""
-    global _paper_gtt_seq
-
-    tt = body.trigger_type.lower()
-    if tt not in ("single", "two-leg"):
-        raise HTTPException(status_code=400, detail="trigger_type must be 'single' or 'two-leg'.")
-    if tt == "single" and len(body.trigger_values) != 1:
-        raise HTTPException(status_code=400, detail="single GTT requires exactly one trigger_value.")
-    if tt == "two-leg" and len(body.trigger_values) != 2:
-        raise HTTPException(status_code=400, detail="two-leg GTT requires exactly two trigger_values.")
-    if tt == "single" and len(body.orders) != 1:
-        raise HTTPException(status_code=400, detail="single GTT requires exactly one order.")
-    if tt == "two-leg" and len(body.orders) != 2:
-        raise HTTPException(status_code=400, detail="two-leg GTT requires exactly two orders.")
-
-    if PAPER_TRADING or _kite is None:
-        _paper_gtt_seq += 1
-        rec = _gtt_paper_stub(_paper_gtt_seq, body)
-        _paper_gtts[_paper_gtt_seq] = rec
-        return {"trigger_id": _paper_gtt_seq, "paper_trading": True}
-
-    try:
-        orders_payload = [
-            {
-                "exchange": o.exchange.upper(),
-                "tradingsymbol": o.tradingsymbol.upper(),
-                "transaction_type": o.transaction_type.upper(),
-                "quantity": o.quantity,
-                "order_type": o.order_type.upper(),
-                "product": o.product.upper(),
-                "price": o.price,
-            }
-            for o in body.orders
-        ]
-        trigger_id = _kite.place_gtt(
-            trigger_type=tt,
-            tradingsymbol=body.symbol.upper(),
-            exchange=body.exchange.upper(),
-            trigger_values=body.trigger_values,
-            last_price=body.last_price,
-            orders=orders_payload,
-        )
-        return {"trigger_id": trigger_id, "paper_trading": False}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"GTT placement failed: {exc}") from exc
+    """Place a GTT trigger (single or two-leg / OCO).
+    
+    DISABLED: GTT placement has been removed from this system.
+    """
+    raise HTTPException(
+        status_code=403,
+        detail="GTT placement has been disabled. This system is for analysis only."
+    )
 
 
 @app.get("/api/gtt")
@@ -1386,53 +1333,23 @@ def get_gtt(trigger_id: int) -> dict[str, Any]:
 
 @app.put("/api/gtt/{trigger_id}")
 def modify_gtt(trigger_id: int, body: GTTModifyRequest) -> dict[str, Any]:
-    """Modify an active GTT."""
-    tt = body.trigger_type.lower()
-    if tt not in ("single", "two-leg"):
-        raise HTTPException(status_code=400, detail="trigger_type must be 'single' or 'two-leg'.")
-
-    if PAPER_TRADING or _kite is None:
-        if trigger_id not in _paper_gtts:
-            raise HTTPException(status_code=404, detail=f"GTT {trigger_id} not found.")
-        rec = _gtt_paper_stub(trigger_id, body)
-        _paper_gtts[trigger_id] = rec
-        return {"trigger_id": trigger_id, "paper_trading": True}
-
-    try:
-        orders_payload = [
-            {
-                "exchange": o.exchange.upper(),
-                "tradingsymbol": o.tradingsymbol.upper(),
-                "transaction_type": o.transaction_type.upper(),
-                "quantity": o.quantity,
-                "order_type": o.order_type.upper(),
-                "product": o.product.upper(),
-                "price": o.price,
-            }
-            for o in body.orders
-        ]
-        _kite.modify_gtt(
-            trigger_id=trigger_id,
-            trigger_type=tt,
-            tradingsymbol=body.symbol.upper(),
-            exchange=body.exchange.upper(),
-            trigger_values=body.trigger_values,
-            last_price=body.last_price,
-            orders=orders_payload,
-        )
-        return {"trigger_id": trigger_id, "paper_trading": False}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"GTT modify failed: {exc}") from exc
+    """Modify an active GTT.
+    
+    DISABLED: GTT modification has been removed from this system.
+    """
+    raise HTTPException(
+        status_code=403,
+        detail="GTT modification has been disabled. This system is for analysis only."
+    )
 
 
 @app.delete("/api/gtt/{trigger_id}")
 def delete_gtt(trigger_id: int) -> dict[str, Any]:
-    """Delete / cancel an active GTT."""
-    if PAPER_TRADING or _kite is None:
-        _paper_gtts.pop(trigger_id, None)
-        return {"trigger_id": trigger_id, "paper_trading": True}
-    try:
-        _kite.delete_gtt(trigger_id)
-        return {"trigger_id": trigger_id, "paper_trading": False}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"GTT delete failed: {exc}") from exc
+    """Delete / cancel an active GTT.
+    
+    DISABLED: GTT deletion has been removed from this system.
+    """
+    raise HTTPException(
+        status_code=403,
+        detail="GTT deletion has been disabled. This system is for analysis only."
+    )

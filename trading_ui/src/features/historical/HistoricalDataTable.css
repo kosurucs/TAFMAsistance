@@ -1,0 +1,303 @@
+.historical-table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.historical-table__info {
+  padding: var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+.historical-table__info strong {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.historical-table__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+}
+
+.historical-table__th {
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-secondary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid var(--color-border);
+  white-space: nowrap;
+  text-transform: uppercase;
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.05em;
+  z-index: 1;
+}
+
+.historical-table__th--timestamp {
+  min-width: 180px;
+}
+
+.historical-table__th--price {
+  text-align: right;
+}
+
+.historical-table__th--volume {
+  text-align: right;
+}
+
+.historical-table__td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--color-border-muted);
+  color: var(--color-text-primary);
+}
+
+.historical-table__td--index {
+  color: var(--color-text-tertiary);
+  font-weight: var(--font-weight-medium);
+}
+
+.historical-table__td--timestamp {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.historical-table__td--price {
+  text-align: right;
+  font-weight: var(--font-weight-medium);
+}
+
+.historical-table__td--volume {
+  text-align: right;
+  color: var(--color-text-secondary);
+}
+
+.historical-table__td--high {
+  color: var(--color-up);
+}
+
+.historical-table__td--low {
+  color: var(--color-down);
+}
+
+.historical-table__td--type {
+  text-align: center;
+  font-weight: var(--font-weight-semibold);
+}
+
+.historical-table__td--bullish {
+  color: var(--color-up);
+}
+
+.historical-table__td--bearish {
+  color: var(--color-down);
+}
+
+.historical-table__td--change {
+  text-align: right;
+  font-weight: var(--font-weight-semibold);
+}
+
+.historical-table__td--positive {
+  color: var(--color-up);
+}
+
+.historical-table__td--negative {
+  color: var(--color-down);
+}
+
+.historical-table__change-percent {
+  font-size: var(--font-size-xs);
+  margin-left: var(--spacing-xs);
+  opacity: 0.8;
+}
+
+.historical-table__row {
+  transition: background-color 0.15s;
+}
+
+.historical-table__row:hover {
+  background: var(--color-bg-secondary);
+}
+
+.historical-table__row--bullish {
+  border-left: 3px solid var(--color-up);
+}
+
+.historical-table__row--bearish {
+  border-left: 3px solid var(--color-down);
+}
+
+.historical-table__empty,
+.historical-table__error,
+.historical-table__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  gap: var(--spacing-md);
+  min-height: 400px;
+}
+
+.historical-table__error {
+  color: var(--color-danger);
+}
+
+.historical-table__loading {
+  gap: var(--spacing-md);
+}
+
+/* Volume building columns */
+.historical-table__td--vol-direction {
+  text-align: center;
+  font-weight: var(--font-weight-semibold);
+}
+
+.historical-table__td--bullish .vol-direction-badge {
+  color: var(--color-up);
+}
+
+.historical-table__td--bearish .vol-direction-badge {
+  color: var(--color-down);
+}
+
+.historical-table__td--neutral .vol-direction-badge {
+  color: var(--color-text-secondary);
+}
+
+.vol-direction-badge {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-xs);
+}
+
+.vol-direction-net {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  font-weight: var(--font-weight-normal);
+}
+
+.historical-table__td--trend-change {
+  text-align: center;
+}
+
+.trend-change-badge {
+  display: inline-block;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--color-warning-alpha);
+  color: var(--color-warning);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+/* Technical Indicators */
+.historical-table__td--rsi {
+  font-weight: var(--font-weight-semibold);
+  text-align: center;
+}
+
+.historical-table__td--rsi.oversold {
+  color: var(--color-up);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.historical-table__td--rsi.overbought {
+  color: var(--color-down);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.historical-table__td--trend {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-align: center;
+}
+
+.historical-table__td--trend.historical-table__td--uptrend {
+  color: var(--color-up);
+}
+
+.historical-table__td--trend.historical-table__td--downtrend {
+  color: var(--color-down);
+}
+
+.historical-table__td--trend.historical-table__td--sideways {
+  color: var(--color-text-secondary);
+}
+
+/* Pattern Analysis */
+.historical-table__td--pattern {
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
+.historical-table__td--pattern.pattern-significant {
+  font-weight: var(--font-weight-bold);
+  background: rgba(96, 165, 250, 0.1);
+}
+
+/* Trading Signals */
+.historical-table__td--signal {
+  text-align: center;
+  font-weight: var(--font-weight-bold);
+}
+
+.signal-badge {
+  display: inline-block;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.signal-buy .signal-badge {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-up);
+  border: 1px solid var(--color-up);
+}
+
+.signal-sell .signal-badge {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--color-down);
+  border: 1px solid var(--color-down);
+}
+
+.signal-hold .signal-badge {
+  background: rgba(156, 163, 175, 0.2);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.historical-table__td--strength {
+  text-align: center;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-base);
+}
+
+.strength-positive {
+  color: var(--color-up);
+}
+
+.strength-negative {
+  color: var(--color-down);
+}
+
+.strength-neutral {
+  color: var(--color-text-secondary);
+}
+
+/* Volume spike indicator */
+.volume-spike {
+  color: var(--color-warning);
+  font-weight: var(--font-weight-bold);
+}

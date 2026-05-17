@@ -1,0 +1,213 @@
+.pp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.pp-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.pp-title {
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  flex: 1;
+}
+
+.pp-pnl {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.pp-pnl.pos {
+  color: var(--color-up);
+}
+
+.pp-pnl.neg {
+  color: var(--color-down);
+}
+
+.pp-paper {
+  padding: 2px var(--space-xs);
+  background: var(--color-warning);
+  color: var(--color-bg-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+}
+
+.pp-refresh {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pp-refresh:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+}
+
+.pp-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pp-tabs {
+  display: flex;
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pp-tab {
+  padding: var(--space-sm) var(--space-md);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pp-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.pp-tab.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.pp-error {
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(248,81,73,0.1);
+  border: 1px solid var(--color-down);
+  border-radius: var(--radius-md);
+  color: var(--color-down);
+  font-size: var(--font-size-sm);
+}
+
+.pp-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-xl);
+}
+
+.pp-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.pp-view-toggle {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.pp-view-btn {
+  padding: var(--space-xs) var(--space-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pp-view-btn:hover {
+  background: var(--color-bg-hover);
+}
+
+.pp-view-btn.active {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.pp-empty {
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.pp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.pp-table thead tr {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pp-table th {
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pp-table tbody tr {
+  border-bottom: 1px solid var(--color-border-muted);
+  transition: background 0.15s;
+}
+
+.pp-table tbody tr:hover {
+  background: var(--color-bg-hover);
+}
+
+.pp-table td {
+  padding: var(--space-sm) var(--space-md);
+  color: var(--color-text-primary);
+}
+
+.pp-symbol {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.pp-table td.pos {
+  color: var(--color-up);
+  font-weight: 600;
+}
+
+.pp-table td.neg {
+  color: var(--color-down);
+  font-weight: 600;
+}
+
+.pp-margins {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.pp-margin-row {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.pp-margin-row span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.pp-margin-row strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}

@@ -1,0 +1,91 @@
+.app-layout { 
+  min-height: 100vh; 
+  display: flex; 
+  flex-direction: column; 
+  background: var(--color-bg-primary); 
+}
+
+.app-header { 
+  display: flex; 
+  align-items: center; 
+  height: 56px; 
+  padding: 0 var(--space-lg); 
+  background: var(--color-bg-secondary); 
+  border-bottom: 1px solid var(--color-border); 
+  gap: var(--space-xl); 
+  position: sticky; 
+  top: 0; 
+  z-index: 100; 
+}
+
+.app-header__brand { 
+  display: flex; 
+  align-items: center; 
+  gap: var(--space-sm); 
+}
+
+.app-header__logo { 
+  font-size: var(--font-size-lg); 
+}
+
+.app-header__title { 
+  font-size: var(--font-size-md); 
+  font-weight: 700; 
+  color: var(--color-text-primary); 
+  white-space: nowrap; 
+}
+
+.app-nav { 
+  display: flex; 
+  align-items: center; 
+  gap: var(--space-xs); 
+  flex: 1; 
+}
+
+.app-nav__tab { 
+  padding: var(--space-sm) var(--space-md); 
+  border-radius: var(--radius-md); 
+  font-size: var(--font-size-base); 
+  font-weight: 500; 
+  color: var(--color-text-secondary); 
+  text-decoration: none; 
+  transition: all 0.15s; 
+}
+
+.app-nav__tab:hover { 
+  color: var(--color-text-primary); 
+  background: var(--color-bg-hover); 
+}
+
+.app-nav__tab--active { 
+  color: var(--color-accent); 
+  background: rgba(88,166,255,0.1); 
+}
+
+.app-header__status { 
+  display: flex; 
+  align-items: center; 
+  gap: var(--space-xs); 
+}
+
+.status-dot { 
+  width: 8px; 
+  height: 8px; 
+  border-radius: 50%; 
+}
+
+.status-dot--live { 
+  background: var(--color-up); 
+  box-shadow: 0 0 6px var(--color-up); 
+}
+
+.app-header__status-text { 
+  font-size: var(--font-size-sm); 
+  color: var(--color-text-secondary); 
+}
+
+.app-main { 
+  flex: 1; 
+  padding: var(--space-lg); 
+  overflow: auto; 
+}

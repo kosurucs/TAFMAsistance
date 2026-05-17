@@ -1,12 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
-import GTTModal from './GTTModal.jsx'
-import './GTTModal.css'
 import './PortfolioPanel.css'
 
 const API = '/api'
 
-const TABS = ['Positions', 'Holdings', 'Orders', 'Trades', 'GTT', 'Auctions', 'Margins']
+const TABS = ['Positions', 'Holdings', 'Trades', 'Auctions', 'Margins']
 
 function fmt(v, digits = 2) {
   const n = Number(v)
@@ -86,28 +84,21 @@ export default function PortfolioPanel({ onClose }) {
   const [tab, setTab]         = useState('Positions')
   const [posView, setPosView] = useState('net')   // net | day
   const [data, setData]       = useState(null)
-  const [orders, setOrders]   = useState(null)
   const [trades, setTrades]   = useState(null)
-  const [gtts, setGtts]       = useState(null)
   const [busy, setBusy]       = useState(false)
   const [err, setErr]         = useState('')
-  const [editGtt, setEditGtt]         = useState(null)
   const [convertPos, setConvertPos]   = useState(null)
 
   const load = useCallback(async () => {
     setBusy(true)
     setErr('')
     try {
-      const [pf, od, tr, gtt] = await Promise.all([
+      const [pf, tr] = await Promise.all([
         axios.get(`${API}/portfolio`),
-        axios.get(`${API}/orders`),
         axios.get(`${API}/trades`),
-        axios.get(`${API}/gtt`),
       ])
       setData(pf.data)
-      setOrders(od.data?.orders ?? [])
       setTrades(tr.data?.trades ?? [])
-      setGtts(gtt.data?.gtts ?? [])
     } catch (e) {
       setErr(e.response?.data?.detail || e.message)
     } finally {
@@ -251,60 +242,6 @@ export default function PortfolioPanel({ onClose }) {
         </div>
       )}
 
-      {/* ── Orders ── */}
-      {tab === 'Orders' && (
-        <div className="pp-table-wrap">
-          {!orders || orders.length === 0
-            ? <div className="pp-empty">No orders today</div>
-            : (
-              <table className="pp-table">
-                <thead>
-                  <tr>
-                    <th>Symbol</th><th>Variety</th><th>Side</th><th>Qty</th><th>Price</th>
-                    <th>Status</th><th>Order ID</th><th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((o, i) => {
-                    const canCancel = ['OPEN', 'TRIGGER PENDING', 'AMO REQ RECEIVED', 'OPEN PENDING'].includes(o.status)
-                    return (
-                      <tr key={i}>
-                        <td className="sym">{o.tradingsymbol}</td>
-                        <td style={{ textTransform: 'capitalize', fontSize: 11 }}>{o.variety ?? 'regular'}</td>
-                        <td className={o.transaction_type === 'BUY' ? 'pos' : 'neg'}>{o.transaction_type}</td>
-                        <td>{o.quantity}</td>
-                        <td>{o.price ? fmt(o.price) : 'MKT'}</td>
-                        <td>
-                          <span className={`pp-order-status status-${(o.status || '').toLowerCase().replace(/ /g, '-')}`}>
-                            {o.status}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: 11 }}>{o.order_id}</td>
-                        <td>
-                          {canCancel && (
-                            <button
-                              className="pp-gtt-btn del"
-                              title="Cancel order"
-                              onClick={async () => {
-                                if (!window.confirm(`Cancel order ${o.order_id}?`)) return
-                                try {
-                                  await axios.delete(`/api/order/${o.variety ?? 'regular'}/${o.order_id}`)
-                                  load()
-                                } catch (e) { alert(e.response?.data?.detail || e.message) }
-                              }}
-                            >✕</button>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )
-          }
-        </div>
-      )}
-
       {/* ── Trades ── */}
       {tab === 'Trades' && (
         <div className="pp-table-wrap">
@@ -333,58 +270,6 @@ export default function PortfolioPanel({ onClose }) {
                 </tbody>
               </table>
             )
-          }
-        </div>
-      )}
-
-      {/* ── GTT ── */}
-      {tab === 'GTT' && (
-        <div className="pp-gtt">
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 8px' }}>
-            <button className="pp-gtt-refresh" onClick={load}>⟳ Refresh</button>
-          </div>
-          {gtts === null
-            ? <div className="pp-empty">Loading GTTs…</div>
-            : gtts.length === 0
-              ? <div className="pp-empty">No active GTTs</div>
-              : (
-                <table className="pp-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th><th>Symbol</th><th>Type</th><th>Triggers</th><th>Status</th><th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {gtts.map(g => {
-                      const sym = g.condition?.tradingsymbol ?? g.orders?.[0]?.tradingsymbol ?? '—'
-                      const triggers = (g.condition?.trigger_values ?? []).map(v => `₹${Number(v).toFixed(2)}`).join(', ')
-                      return (
-                        <tr key={g.id}>
-                          <td>{g.id}</td>
-                          <td>{sym}</td>
-                          <td style={{ textTransform: 'capitalize' }}>{g.type}</td>
-                          <td>{triggers}</td>
-                          <td><span className={`pp-order-status status-${g.status}`}>{g.status}</span></td>
-                          <td>
-                            <button className="pp-gtt-btn edit" onClick={() => setEditGtt(g)} title="Edit">✏️</button>
-                            <button
-                              className="pp-gtt-btn del"
-                              onClick={async () => {
-                                if (!window.confirm(`Delete GTT #${g.id}?`)) return
-                                try {
-                                  await axios.delete(`/api/gtt/${g.id}`)
-                                  setGtts(prev => prev.filter(x => x.id !== g.id))
-                                } catch (e) { alert(e.response?.data?.detail || e.message) }
-                              }}
-                              title="Delete"
-                            >🗑</button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )
           }
         </div>
       )}
@@ -461,17 +346,6 @@ export default function PortfolioPanel({ onClose }) {
             ))
           }
         </div>
-      )}
-
-      {/* GTT edit modal */}
-      {editGtt && (
-        <GTTModal
-          symbol={editGtt.condition?.tradingsymbol ?? editGtt.orders?.[0]?.tradingsymbol ?? ''}
-          quote={null}
-          editGtt={editGtt}
-          onClose={() => setEditGtt(null)}
-          onSaved={() => { setEditGtt(null); load() }}
-        />
       )}
 
       {/* Position convert modal */}
