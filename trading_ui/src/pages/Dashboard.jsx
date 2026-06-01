@@ -12,19 +12,22 @@ import { ScenarioPanel } from '../features/analysis/ScenarioPanel';
 import './Dashboard.css';
 
 export default function Dashboard() {
-  const { loading } = useMarketStore();
+  const { loading, refreshing } = useMarketStore();
   useMarketData();
-  
+
   return (
     <AppLayout>
       <div className="dashboard">
         <div className="dashboard__toolbar">
           <SymbolSearch />
+          <div className="dashboard__toolbar-divider" />
           <IntervalSelector />
         </div>
+
         <QuoteBar />
+
         <div className="dashboard__grid">
-          <Card className="dashboard__chart" title="Price Chart">
+          <Card className="dashboard__chart" title="Price Chart" refreshing={refreshing}>
             {loading ? (
               <div className="dashboard__chart-loading">
                 <Spinner size="lg" />
@@ -33,11 +36,13 @@ export default function Dashboard() {
               <CandleChart />
             )}
           </Card>
+
           <div className="dashboard__sidebar">
             <IndicatorPanel />
             <ScenarioPanel />
           </div>
         </div>
+
         <div className="dashboard__market-depth">
           <MarketDepthTable />
         </div>

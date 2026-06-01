@@ -2,14 +2,29 @@ import { useMarketStore } from '../../store';
 import { Card } from '../../design-system';
 import './IndicatorPanel.css';
 
-const TREND_COLOR = { BULLISH: 'var(--color-up)', BEARISH: 'var(--color-down)', NEUTRAL: 'var(--color-neutral)' };
-const BB_COLOR = { ABOVE_UPPER: 'var(--color-down)', BELOW_LOWER: 'var(--color-up)', INSIDE: 'var(--color-neutral)', INSIDE_BANDS: 'var(--color-neutral)' };
-const MACD_COLOR = { BULLISH: 'var(--color-up)', BEARISH: 'var(--color-down)', NEUTRAL: 'var(--color-neutral)' };
-const STOCH_COLOR = { OVERBOUGHT: 'var(--color-down)', OVERSOLD: 'var(--color-up)', NEUTRAL: 'var(--color-neutral)' };
+const TREND_META = {
+  BULLISH: { color: 'var(--color-up)',   label: '▲ Bullish' },
+  BEARISH: { color: 'var(--color-down)', label: '▼ Bearish' },
+  NEUTRAL: { color: 'var(--color-neutral)', label: '↔ Neutral' },
+};
+const BB_META = {
+  ABOVE_UPPER:  { color: 'var(--color-down)',    label: 'Above Upper' },
+  BELOW_LOWER:  { color: 'var(--color-up)',      label: 'Below Lower' },
+  INSIDE:       { color: 'var(--color-neutral)', label: 'Inside Bands' },
+  INSIDE_BANDS: { color: 'var(--color-neutral)', label: 'Inside Bands' },
+};
+const MACD_META = {
+  BULLISH: { color: 'var(--color-up)',   label: '▲ Bullish' },
+  BEARISH: { color: 'var(--color-down)', label: '▼ Bearish' },
+  NEUTRAL: { color: 'var(--color-neutral)', label: '↔ Neutral' },
+};
+const STOCH_META = {
+  OVERBOUGHT: { color: 'var(--color-down)', label: 'Overbought' },
+  OVERSOLD:   { color: 'var(--color-up)',   label: 'Oversold' },
+  NEUTRAL:    { color: 'var(--color-neutral)', label: 'Neutral' },
+};
 
-function p(v, d = 2) { 
-  return Number(v || 0).toFixed(d); 
-}
+function p(v, d = 2) { return Number(v || 0).toFixed(d); }
 
 function rsiColor(v) {
   if (v >= 70) return 'var(--color-down)';
@@ -17,11 +32,26 @@ function rsiColor(v) {
   return 'var(--color-text-primary)';
 }
 
-function Row({ label, value, color }) {
+function RsiBar({ value }) {
+  const pct = Math.min(100, Math.max(0, value));
+  const color = rsiColor(value);
   return (
-    <div className="ip-card">
+    <div className="rsi-bar-track" title={`RSI: ${p(value, 1)}`}>
+      <div className="rsi-bar-fill" style={{ width: `${pct}%`, background: color }} />
+      <span className="rsi-bar-ob" />
+      <span className="rsi-bar-os" />
+    </div>
+  );
+}
+
+function Row({ label, value, color, sub }) {
+  return (
+    <div className="ip-row">
       <span className="ip-label">{label}</span>
-      <span className="ip-value" style={color ? { color } : undefined}>{value}</span>
+      <span className="ip-value-wrap">
+        <span className="ip-value" style={color ? { color } : undefined}>{value}</span>
+        {sub && <span className="ip-sub">{sub}</span>}
+      </span>
     </div>
   );
 }
@@ -31,75 +61,74 @@ function Section({ title }) {
 }
 
 export function IndicatorPanel() {
-  const { indicators: ind } = useMarketStore();
-  
+  const { indicators: ind, refreshing } = useMarketStore();
+
   if (!ind) {
     return (
       <Card title="Technical Indicators">
-        <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-sm)' }}>
-          Loading indicators...
-        </p>
+        <p className="ip-empty">Loading indicators…</p>
       </Card>
     );
   }
 
-  const macdUp = (ind.macd_hist || 0) >= 0;
+  const macdUp    = (ind.macd_hist || 0) >= 0;
+  const trendMeta = TREND_META[ind.trend] || TREND_META.NEUTRAL;
+  const macdMeta  = MACD_META[ind.macd_label] || MACD_META.NEUTRAL;
+  const bbMeta    = BB_META[ind.bb_signal] || BB_META.INSIDE;
+  const stochMeta = STOCH_META[ind.stoch_signal] || STOCH_META.NEUTRAL;
+  const rsiVal    = Number(ind.rsi || 0);
 
   return (
-    <Card title="Technical Indicators">
+    <Card title="Technical Indicators" refreshing={refreshing}>
       <div className="ip-grid">
+        {/* Price */}
         <Section title="Price" />
-        <Row label="Close" value={`₹${p(ind.close)}`} />
-        <Row label="VWAP" value={ind.vwap ? `₹${p(ind.vwap)}` : '—'} />
+        <Row label="Close"  value={`₹${p(ind.close)}`} />
+        <Row label="VWAP"   value={ind.vwap ? `₹${p(ind.vwap)}` : '—'} />
         <Row label="Volume" value={Number(ind.volume || 0).toLocaleString('en-IN')} />
 
+        {/* Momentum */}
         <Section title="Momentum" />
+        <div className="ip-rsi-row">
+          <span className="ip-label">RSI (14)</span>
+          <div className="ip-rsi-right">
+            <span className="ip-value" style={{ color: rsiColor(rsiVal) }}>
+              {p(rsiVal, 1)}
+              {rsiVal >= 70 ? ' OB' : rsiVal <= 30 ? ' OS' : ''}
+            </span>
+            <RsiBar value={rsiVal} />
+          </div>
+        </div>
         <Row
-          label="RSI (14)"
-          value={`${p(ind.rsi, 1)} ${(ind.rsi||0)>=70?' OB':(ind.rsi||0)<=30?' OS':''}`}
-          color={rsiColor(ind.rsi || 0)}
-        />
-        <Row
-          label="Stoch %K"
+          label="Stoch %K/%D"
           value={`${p(ind.stoch_k, 1)} / ${p(ind.stoch_d, 1)}`}
-          color={STOCH_COLOR[ind.stoch_signal] || 'var(--color-text-primary)'}
+          color={stochMeta.color}
+          sub={stochMeta.label}
         />
 
+        {/* Trend / MA */}
         <Section title="Trend / MA" />
-        <Row label="EMA 9" value={`₹${p(ind.ema_fast)}`} />
-        <Row label="EMA 21" value={`₹${p(ind.ema_slow)}`} />
-        <Row label="EMA 50" value={ind.ema_50 ? `₹${p(ind.ema_50)}` : '—'} />
+        <Row label="EMA 9"   value={`₹${p(ind.ema_fast)}`} />
+        <Row label="EMA 21"  value={`₹${p(ind.ema_slow)}`} />
+        <Row label="EMA 50"  value={ind.ema_50  ? `₹${p(ind.ema_50)}`  : '—'} />
         <Row label="EMA 200" value={ind.ema_200 ? `₹${p(ind.ema_200)}` : '—'} />
-        <Row
-          label="Trend"
-          value={ind.trend || '—'}
-          color={TREND_COLOR[ind.trend] || 'var(--color-neutral)'}
-        />
+        <Row label="Trend"   value={trendMeta.label} color={trendMeta.color} />
 
+        {/* MACD */}
         <Section title="MACD (12/26/9)" />
-        <Row label="MACD" value={p(ind.macd, 3)} />
-        <Row label="Signal" value={p(ind.macd_signal, 3)} />
-        <Row
-          label="Histogram"
-          value={p(ind.macd_hist, 3)}
-          color={macdUp ? 'var(--color-up)' : 'var(--color-down)'}
-        />
-        <Row
-          label="MACD Signal"
-          value={ind.macd_label || '—'}
-          color={MACD_COLOR[ind.macd_label] || 'var(--color-neutral)'}
-        />
+        <Row label="MACD"      value={p(ind.macd,       3)} />
+        <Row label="Signal"    value={p(ind.macd_signal, 3)} />
+        <Row label="Histogram" value={p(ind.macd_hist,   3)} color={macdUp ? 'var(--color-up)' : 'var(--color-down)'} />
+        <Row label="Signal"    value={macdMeta.label}        color={macdMeta.color} />
 
+        {/* Bollinger Bands */}
         <Section title="Bollinger Bands" />
-        <Row label="BB Upper" value={`₹${p(ind.bb_upper)}`} />
-        <Row label="BB Middle" value={`₹${p(ind.bb_middle)}`} />
-        <Row label="BB Lower" value={`₹${p(ind.bb_lower)}`} />
-        <Row
-          label="BB Signal"
-          value={(ind.bb_signal || '—').replace('_', ' ')}
-          color={BB_COLOR[ind.bb_signal] || 'var(--color-neutral)'}
-        />
+        <Row label="Upper"    value={`₹${p(ind.bb_upper)}`} />
+        <Row label="Middle"   value={`₹${p(ind.bb_middle)}`} />
+        <Row label="Lower"    value={`₹${p(ind.bb_lower)}`} />
+        <Row label="Signal"   value={bbMeta.label} color={bbMeta.color} />
 
+        {/* Volatility */}
         <Section title="Volatility" />
         <Row label="ATR (14)" value={ind.atr ? p(ind.atr) : '—'} />
       </div>

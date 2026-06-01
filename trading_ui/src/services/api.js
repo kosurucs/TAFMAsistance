@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 async function request(path, options = {}) {
   try {
@@ -7,6 +7,14 @@ async function request(path, options = {}) {
       ...options,
     });
     if (!res.ok) {
+      // Handle 401 Unauthorized - redirect to login
+      if (res.status === 401) {
+        // Only redirect if we're not already on the login page
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      }
+      
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       return { data: null, error: err.detail || `HTTP ${res.status}` };
     }
@@ -53,8 +61,21 @@ export const sendChatMessage = (message, symbol, indicators) =>
   request('/api/chat', { method: 'POST', body: JSON.stringify({ message, symbol, indicators }) });
 
 // Backtest
-export const startBacktest = (symbol, years = 20) =>
-  request(`/api/backtest/${symbol}?years=${years}`, { method: 'POST' });
+export const startBacktest = (symbol, years = 20, options = {}) => {
+  const params = new URLSearchParams({ years });
+  if (options.strategies) params.set('strategies', options.strategies);
+  if (options.exchange) params.set('exchange', options.exchange);
+  if (options.instrument) params.set('instrument', options.instrument);
+  if (options.walk_forward != null) params.set('walk_forward', options.walk_forward);
+  if (options.rsiOversold != null) params.set('rsi_oversold', options.rsiOversold);
+  if (options.rsiOverbought != null) params.set('rsi_overbought', options.rsiOverbought);
+  if (options.emaFast != null) params.set('ema_fast', options.emaFast);
+  if (options.emaSlow != null) params.set('ema_slow', options.emaSlow);
+  if (options.atrMultSl != null) params.set('atr_mult_sl', options.atrMultSl);
+  if (options.atrMultTp != null) params.set('atr_mult_tp', options.atrMultTp);
+  if (options.volumeConfirm != null) params.set('volume_confirm', options.volumeConfirm);
+  return request(`/api/backtest/${symbol}?${params}`, { method: 'POST' });
+};
 export const getBacktestStatus = (jobId) => request(`/api/backtest/status/${jobId}`);
 export const getBacktestResult = (jobId) => request(`/api/backtest/result/${jobId}`);
 
@@ -62,3 +83,25 @@ export const getBacktestResult = (jobId) => request(`/api/backtest/result/${jobI
 export const getBotStatus = () => request('/api/bot/status');
 export const startBot = () => request('/api/bot/start', { method: 'POST' });
 export const stopBot = () => request('/api/bot/stop', { method: 'POST' });
+
+// Authentication
+export const checkAuthStatus = () => request('/api/auth/status');
+export const getLoginUrl = () => request('/api/auth/login-url');
+export const exchangeToken = (callbackUrl) =>
+  request('/api/auth/exchange', { method: 'POST', body: JSON.stringify({ callback_url: callbackUrl }) });
+export const checkCredentialsStatus = () => request('/api/auth/credentials-status');
+export const saveCredentials = (apiKey, apiSecret) =>
+  request('/api/auth/save-credentials', { method: 'POST', body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret }) });
+export const testConnection = () => request('/api/auth/test-connection', { method: 'POST' });
+
+// Axios-compatible API object for zustand store
+export const api = {
+  get: (path) => request(path).then(({ data, error }) => {
+    if (error) throw new Error(error);
+    return { data };
+  }),
+  post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }).then(({ data, error }) => {
+    if (error) throw new Error(error);
+    return { data };
+  }),
+};

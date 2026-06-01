@@ -229,7 +229,9 @@ sudo -u postgres psql -d trading_logs -U trader -f trading_bot/scripts/init_db.s
 1. Log in at [https://developers.kite.trade/](https://developers.kite.trade/).
 2. Click **"Create new app"**.
 3. Choose app type **"Connect"**.
-4. Set the **Redirect URL** to `http://127.0.0.1/` (for local use).
+4. Set the **Redirect URL** to one of:
+    - `http://localhost:5173/login` (recommended)
+    - `https://localhost:7049` (supported fallback)
 5. Copy the **API Key** and **API Secret** into your `.env`.
 
 ### Step 2 – Enable TOTP 2FA
@@ -240,17 +242,13 @@ sudo -u postgres psql -d trading_logs -U trader -f trading_bot/scripts/init_db.s
 
 ### Step 3 – First login
 
-The bot can log in automatically or semi-automatically:
+Use the UI login page at `http://localhost:5173/login`.
 
-**Automated (headless) login** – set `KITE_USER_ID` and `KITE_PASSWORD` in `.env`.  
-On startup the bot will POST credentials + TOTP code to Zerodha and extract the access token.
-
-**Semi-automated login** – leave `KITE_USER_ID` / `KITE_PASSWORD` blank.  
-On startup the bot will print a login URL:
-```
-Login URL: https://kite.zerodha.com/connect/login?api_key=...
-```
-Open that URL, log in manually, and paste the `request_token` from the redirect URL back into the terminal.
+- If credentials are missing, the app will ask for `KITE_API_KEY` and `KITE_API_SECRET`.
+- Click **Login with Zerodha Kite**.
+- After successful login:
+    - If redirect is `http://localhost:5173/login`, exchange is automatic.
+    - If redirect is `https://localhost:7049`, copy callback URL or `request_token` and use the manual exchange box in the login page.
 
 The access token is valid for one trading day. The bot caches it in the `KITE_ACCESS_TOKEN` environment variable so subsequent restarts within the same day skip the login step.
 

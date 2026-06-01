@@ -334,10 +334,64 @@ async def async_run() -> None:
     portfolio = None
 
     if not PAPER_TRADING:
-        auth = KiteAuthManager()
-        kite = auth.get_kite_session()
-        data_fetcher = KiteDataFetcher(kite)
-        portfolio = KitePortfolio(kite)
+        # Validate Kite authentication before starting
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        _IST = ZoneInfo('Asia/Kolkata')
+        
+        access_token = os.environ.get("KITE_ACCESS_TOKEN", "").strip()
+        timestamp_str = os.environ.get("KITE_TOKEN_TIMESTAMP", "").strip()
+        
+        # Check if token exists
+        if not access_token:
+            logger.critical("KITE_ACCESS_TOKEN not found in .env file!")
+            logger.critical("Please authenticate via the UI:")
+            logger.critical("  1. Open http://localhost:5173/login")
+            logger.critical("  2. Enter your API credentials (if first time)")
+            logger.critical("  3. Click 'Login with Zerodha'")
+            logger.critical("  4. Complete the login and return to this page")
+            logger.critical("  5. The access token will be automatically saved")
+            sys.exit(1)
+        
+        # Check token expiration (24 hours)
+        token_expired = True
+        if timestamp_str:
+            try:
+                from dateutil import parser
+                token_time = parser.isoparse(timestamp_str)
+                if token_time.tzinfo is None:
+                    token_time = token_time.replace(tzinfo=_IST)
+                age = datetime.now(_IST) - token_time
+                token_expired = age.total_seconds() > (24 * 60 * 60 - 300)
+            except Exception:
+                pass
+        
+        if token_expired:
+            logger.critical("KITE_ACCESS_TOKEN has expired (>24 hours old)!")
+            logger.critical("Please re-authenticate via the UI:")
+            logger.critical("  1. Open http://localhost:5173/login")
+            logger.critical("  2. Click 'Login with Zerodha'")
+            logger.critical("  3. Complete the login")
+            logger.critical("  4. A fresh token will be automatically saved")
+            sys.exit(1)
+        
+        # Validate token by attempting to create session
+        logger.info("Validating Kite access token...")
+        try:
+            auth = KiteAuthManager()
+            kite = auth.get_kite_session()
+            # Test the connection
+            profile = kite.profile()
+            logger.success("✓ Kite authentication valid for user: {}", profile.get("user_name", "Unknown"))
+            data_fetcher = KiteDataFetcher(kite)
+            portfolio = KitePortfolio(kite)
+        except Exception as exc:
+            logger.critical("Kite authentication failed: {}", exc)
+            logger.critical("Your access token may be invalid or revoked.")
+            logger.critical("Please re-authenticate via the UI:")
+            logger.critical("  1. Open http://localhost:5173/login")
+            logger.critical("  2. Click 'Login with Zerodha'")
+            sys.exit(1)
     else:
         logger.info("Paper-trading mode – Kite API calls will be simulated.")
 

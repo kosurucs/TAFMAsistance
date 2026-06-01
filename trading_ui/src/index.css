@@ -1,5 +1,10 @@
 @import './design-system/theme.css';
 
+html, body {
+  height: 100%;
+  overflow-y: auto;  /* page-level scroll instead of app-main */
+}
+
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #161b22; }
 ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }

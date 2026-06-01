@@ -126,6 +126,10 @@ action pill, and key-factors tags.
 | UI theme CSS vars | `trading_ui/src/design-system/theme.css` |
 | UI global store | `trading_ui/src/store/` |
 | UI HTTP service | `trading_ui/src/services/api.js` |
+| Historical Data page | `trading_ui/src/pages/HistoricalData.jsx` |
+| Historical Data table | `trading_ui/src/features/historical/HistoricalDataTable.jsx` |
+| Symbol search component | `trading_ui/src/components/SymbolSearch.jsx` |
+| Market store (watchlist) | `trading_ui/src/store/marketStore.js` |
 
 ## UI Architecture Rules (Phase 9)
 
@@ -133,8 +137,15 @@ action pill, and key-factors tags.
 - All HTTP calls go through `trading_ui/src/services/api.js`. No direct `axios` calls in components.
 - Global state lives in the zustand store at `trading_ui/src/store/`. No prop-drilling beyond 2 levels.
 - Feature components live in `trading_ui/src/features/<domain>/`.
-- Pages live in `trading_ui/src/pages/`. Five pages: Dashboard, Portfolio, Backtest, Simulate, LLM Studio.
+- Pages live in `trading_ui/src/pages/`. Six pages: Dashboard, Portfolio, **Historical**, Backtest, Simulate, LLM Studio.
 - Primitive UI atoms (Button, Badge, Card, Modal, Spinner, etc.) live in `trading_ui/src/design-system/`.
+
+### Historical Data Page (Added May 2026)
+- **Route**: `/historical`
+- **Purpose**: Comprehensive 22-column technical analysis table with trading signals
+- **Features**: Multi-exchange symbol search (NSE + NFO), volume building analysis, RSI/SMA indicators, pattern recognition (Hammer, Engulfing, Doji), automated BUY/SELL/HOLD signals
+- **Components**: `pages/HistoricalData.jsx` + `features/historical/HistoricalDataTable.jsx`
+- **Full Docs**: `.github/docs/HISTORICAL_DATA_PAGE.md`
 
 ## Agent & Prompt Inventory
 

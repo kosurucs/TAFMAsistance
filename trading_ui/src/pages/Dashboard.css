@@ -2,19 +2,32 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  animation: slide-in-down 0.2s ease-out;
 }
 
+/* ── Single-row toolbar: watchlist | interval selector ──── */
 .dashboard__toolbar {
   display: flex;
-  gap: var(--space-md);
   align-items: center;
-  flex-wrap: wrap;
+  gap: var(--space-md);
+  flex-wrap: nowrap;
+  overflow: visible;   /* must be visible so dropdown escapes the toolbar */
+  padding-bottom: 2px;
+}
+
+/* Visual divider between watchlist and interval selector */
+.dashboard__toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--color-border);
+  flex-shrink: 0;
 }
 
 .dashboard__grid {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 1fr 310px;
   gap: var(--space-md);
+  align-items: start;
 }
 
 .dashboard__chart {
@@ -25,21 +38,38 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 400px;
+  min-height: 420px;
 }
 
 .dashboard__sidebar {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  position: sticky;
+  top: calc(56px + var(--space-lg));
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 .dashboard__market-depth {
-  margin-top: var(--space-md);
+  margin-top: var(--space-xs);
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1100px) {
   .dashboard__grid {
     grid-template-columns: 1fr;
   }
+  .dashboard__sidebar {
+    position: static;
+    max-height: none;
+  }
 }
+
+@media (max-width: 768px) {
+  .dashboard__toolbar {
+    flex-wrap: wrap;
+  }
+}
+

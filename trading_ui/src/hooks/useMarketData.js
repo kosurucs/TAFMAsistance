@@ -1,37 +1,61 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useMarketStore } from '../store';
 import { fetchCandles, fetchQuote } from '../services/api';
 
+const REFRESH_INTERVAL_MS = 15_000; // 15-second live refresh
+
 export function useMarketData() {
-  const { selectedSymbol, interval, setCandles, setIndicators, setQuote, setLoading, setError } = useMarketStore();
-  
-  const loadData = useCallback(async () => {
+  const {
+    selectedSymbol, interval,
+    setCandles, setIndicators, setQuote,
+    setLoading, setRefreshing, setError, setLastUpdated,
+    candles,
+  } = useMarketStore();
+
+  // Track whether the initial load for this symbol has already happened
+  const initialLoadDone = useRef(false);
+  const prevSymbolRef = useRef(selectedSymbol);
+
+  const loadData = useCallback(async (isInitial = false) => {
     if (!selectedSymbol) return;
-    setLoading(true);
+
+    if (isInitial) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
-    
-    // Fetch market data (candles + indicators) and quote in parallel
+
     const [marketRes, quoteRes] = await Promise.all([
       fetchCandles(selectedSymbol, interval),
       fetchQuote(selectedSymbol),
     ]);
-    
-    // Extract candles and indicators from the market-data response
+
     if (marketRes.data) {
       setCandles(marketRes.data.candles || []);
       setIndicators(marketRes.data.indicators || null);
     }
     if (quoteRes.data) setQuote(quoteRes.data);
     if (marketRes.error) setError(marketRes.error);
-    
+
+    setLastUpdated(Date.now());
     setLoading(false);
-  }, [selectedSymbol, interval, setCandles, setIndicators, setQuote, setLoading, setError]);
-  
+    setRefreshing(false);
+  }, [selectedSymbol, interval, setCandles, setIndicators, setQuote, setLoading, setRefreshing, setError, setLastUpdated]);
+
   useEffect(() => {
-    loadData();
-    const id = setInterval(loadData, 60_000); // refresh every 60s
+    const symbolChanged = prevSymbolRef.current !== selectedSymbol;
+    prevSymbolRef.current = selectedSymbol;
+
+    // Full spinner on symbol/interval change or first load
+    const isInitial = symbolChanged || !initialLoadDone.current;
+    initialLoadDone.current = true;
+
+    loadData(isInitial);
+
+    const id = setInterval(() => loadData(false), REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [loadData]);
-  
-  return { reload: loadData };
+
+  return { reload: () => loadData(true), refreshIntervalMs: REFRESH_INTERVAL_MS };
 }

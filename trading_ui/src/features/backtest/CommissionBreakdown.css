@@ -1,0 +1,102 @@
+/* ── CommissionBreakdown ──────────────────────────────────────────────── */
+.cbd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.cbd-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.cbd-title {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.cbd-subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.cbd-table-wrap {
+  overflow-x: auto;
+}
+
+.cbd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-xs);
+}
+
+.cbd-table th {
+  padding: var(--space-xs) var(--space-sm);
+  text-align: left;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.cbd-table td {
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
+.cbd-table tr:last-child td {
+  border-bottom: none;
+}
+
+.cbd-table tbody tr:hover td {
+  background: var(--color-bg-hover);
+}
+
+.cbd-name {
+  font-weight: 600;
+  color: var(--color-text-primary) !important;
+}
+
+.cbd-tf {
+  color: var(--color-text-muted) !important;
+}
+
+.cbd-seg-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(77, 166, 255, 0.1);
+  color: var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.cbd-num {
+  text-align: right !important;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cbd-cost {
+  color: var(--color-down) !important;
+}
+
+.cbd-net {
+  font-weight: 700 !important;
+}
+
+.cbd-drag {
+  color: var(--color-down) !important;
+  opacity: 0.75;
+}

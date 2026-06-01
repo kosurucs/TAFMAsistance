@@ -1,49 +1,79 @@
-.interval-selector {
+/* ── Interval selector — mirrors SymbolSearch pill+pipe style ─ */
+
+.iv-bar {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--space-sm);
+  flex-shrink: 0;
 }
 
-.interval-selector__label {
+/* Muted "TF" prefix label */
+.iv-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* Separator after the label */
+.iv-divider {
+  color: var(--color-border);
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  font-weight: 500;
-  margin: 0;
+  user-select: none;
 }
 
-.interval-selector__buttons {
+/* Pill row */
+.iv-pills {
   display: flex;
-  gap: var(--spacing-xs);
-  background: var(--bg-secondary);
-  padding: var(--spacing-xs);
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
+  align-items: center;
+  gap: 0;
 }
 
-.interval-selector__button {
-  padding: var(--spacing-xs) var(--spacing-sm);
+.iv-group {
+  display: flex;
+  align-items: center;
+}
+
+/* Pipe separator between pills — same style as wl-pipe */
+.iv-pipe {
+  color: var(--color-border);
   font-size: var(--font-size-sm);
-  font-family: var(--font-family-mono);
-  font-weight: 500;
+  padding: 0 3px;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Individual pill — same dimensions & hover as wl-pill */
+.iv-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family);
+  font-weight: 600;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   border: none;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.2s;
-  min-width: 40px;
+  transition: color var(--transition-fast), background var(--transition-fast),
+              box-shadow var(--transition-fast);
+  white-space: nowrap;
 }
 
-.interval-selector__button:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+.iv-pill:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
 
-.interval-selector__button--active {
-  background: var(--color-primary);
-  color: var(--text-on-primary);
+/* Active pill — identical treatment to wl-pill--active */
+.iv-pill--active {
+  color: var(--color-accent);
+  background: rgba(77, 166, 255, 0.1);
 }
 
-.interval-selector__button--active:hover {
-  background: var(--color-primary-hover);
+.iv-pill--active:hover {
+  background: rgba(77, 166, 255, 0.18);
 }

@@ -1,88 +1,137 @@
+/* ── QuoteBar shell ──────────────────────────────────── */
 .quote-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-md);
+  padding: var(--space-sm) var(--space-lg);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   gap: var(--space-lg);
+  min-height: 64px;
+  transition: border-color var(--transition-fast);
 }
 
-.quote-bar.loading {
+.quote-bar--refreshing {
+  border-color: rgba(77,166,255,0.3);
+}
+
+.quote-bar--loading {
   justify-content: flex-start;
 }
 
+/* skeleton text */
+.qb-skeleton {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  margin-left: var(--space-md);
+  animation: flash-neutral 1.2s ease-in-out infinite;
+}
+
+/* ── Left: symbol + exchange ─────────────────────────── */
 .qb-left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-sm);
+  flex-shrink: 0;
 }
 
 .qb-symbol {
   font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--color-text-primary);
+  letter-spacing: 0.3px;
 }
 
 .qb-exchange {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   color: var(--color-text-muted);
-  padding: 2px var(--space-xs);
+  padding: 2px 6px;
   background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+  font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
+/* ── Centre: LTP + change ────────────────────────────── */
 .qb-center {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-md);
+  flex-shrink: 0;
 }
 
+/* LTP flash states */
 .qb-ltp {
   font-size: var(--font-size-xl);
   font-weight: 700;
   color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
 }
 
-.qb-change {
-  font-size: var(--font-size-base);
+.qb-ltp--flash-up {
+  animation: flash-up 0.9s ease-out;
+}
+
+.qb-ltp--flash-down {
+  animation: flash-down 0.9s ease-out;
+}
+
+/* change pill */
+.qb-change-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px var(--space-sm);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.qb-change.up {
+.qb-change-pill--up {
+  background: var(--color-up-dim);
   color: var(--color-up);
 }
 
-.qb-change.down {
+.qb-change-pill--down {
+  background: var(--color-down-dim);
   color: var(--color-down);
 }
 
+/* ── Right: OHLCV stats ──────────────────────────────── */
 .qb-right {
   display: flex;
   gap: var(--space-lg);
+  flex-wrap: wrap;
 }
 
 .qb-stat {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  align-items: center;
+  align-items: flex-end;
 }
 
-.qb-stat span {
+.qb-stat__label {
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
   text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 500;
 }
 
-.qb-stat strong {
+.qb-stat__val {
   font-size: var(--font-size-sm);
+  font-weight: 600;
   color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
-.qb-loading {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  margin-left: var(--space-md);
-}
+.qb-stat__val--up   { color: var(--color-up); }
+.qb-stat__val--down { color: var(--color-down); }

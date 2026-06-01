@@ -2,103 +2,113 @@ import { useState } from 'react';
 import { AppLayout } from '../layouts/AppLayout';
 import { Card } from '../design-system';
 import { HistoricalDataTable } from '../features/historical/HistoricalDataTable';
-import SymbolSearch from '../components/SymbolSearch';
+import { SymbolSearch } from '../features/trading/SymbolSearch';
 import { useMarketStore } from '../store';
 import './HistoricalData.css';
 
 const INTERVALS = [
-  { label: '1 Minute', value: 'minute' },
-  { label: '5 Minutes', value: '5minute' },
-  { label: '15 Minutes', value: '15minute' },
-  { label: '1 Hour', value: '60minute' },
-  { label: '1 Day', value: 'day' },
+  { label: '1m',  value: 'minute'   },
+  { label: '5m',  value: '5minute'  },
+  { label: '15m', value: '15minute' },
+  { label: '1h',  value: '60minute' },
+  { label: '1D',  value: 'day'      },
 ];
 
 const TRADE_TYPES = [
-  { label: 'Intraday', value: 'intraday' },
-  { label: 'Swing', value: 'swing' },
-  { label: 'Long Term', value: 'long' },
+  { label: 'Intraday',  value: 'intraday' },
+  { label: 'Swing',     value: 'swing'    },
+  { label: 'Long Term', value: 'long'     },
 ];
 
-export default function HistoricalData() {
-  const { watchlist, addToWatchlist, removeFromWatchlist } = useMarketStore();
-  const [selectedSymbol, setSelectedSymbol] = useState('RELIANCE');
-  const [interval, setInterval] = useState('day');
-  const [limit, setLimit] = useState(100);
-  const [tradeType, setTradeType] = useState('intraday');
+const ROW_OPTIONS = [50, 100, 200, 500, 1000];
 
-  const handleSymbolSelect = (symbol) => {
-    setSelectedSymbol(symbol);
-  };
+export default function HistoricalData() {
+  const { selectedSymbol } = useMarketStore();
+  const [interval,  setInterval]  = useState('day');
+  const [limit,     setLimit]     = useState(100);
+  const [tradeType, setTradeType] = useState('intraday');
 
   return (
     <AppLayout>
-      <Card title="Historical Data">
-        <div className="historical-data">
-          <div className="historical-data__controls">
-            <div className="historical-data__control-group historical-data__symbol-section">
-              <label className="historical-data__label">Symbol Search</label>
-              <div className="historical-data__symbol-search">
-                <SymbolSearch 
-                  watchlist={watchlist}
-                  selected={selectedSymbol}
-                  onSelect={handleSymbolSelect}
-                  onAdd={addToWatchlist}
-                  onRemove={removeFromWatchlist}
-                />
-              </div>
-            </div>
+      <div className="hd-page">
+        {/* -- Single horizontal toolbar ----------------------- */}
+        <div className="hd-toolbar">
 
-            <div className="historical-data__control-group">
-              <label className="historical-data__label">Trade Type</label>
-              <select 
-                className="historical-data__select"
-                value={tradeType}
-                onChange={(e) => setTradeType(e.target.value)}
-              >
-                {TRADE_TYPES.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </div>
+          {/* Watchlist + symbol search */}
+          <SymbolSearch />
 
-            <div className="historical-data__control-group">
-              <label className="historical-data__label">Interval</label>
-              <select 
-                className="historical-data__select"
-                value={interval}
-                onChange={(e) => setInterval(e.target.value)}
-              >
-                {INTERVALS.map(i => (
-                  <option key={i.value} value={i.value}>{i.label}</option>
-                ))}
-              </select>
-            </div>
+          <span className="hd-sep">|</span>
 
-            <div className="historical-data__control-group">
-              <label className="historical-data__label">Rows</label>
-              <input
-                type="number"
-                className="historical-data__input"
-                value={limit}
-                onChange={(e) => setLimit(parseInt(e.target.value) || 100)}
-                min="10"
-                max="2000"
-                step="10"
-              />
-            </div>
+          {/* Timeframe pills */}
+          <span className="hd-group-label">TF</span>
+          <span className="hd-sep">|</span>
+          <div className="hd-pills">
+            {INTERVALS.map((tf, idx) => (
+              <span key={tf.value} className="hd-pill-group">
+                {idx > 0 && <span className="hd-pipe">|</span>}
+                <button
+                  className={`hd-pill ${interval === tf.value ? 'hd-pill--active' : ''}`}
+                  onClick={() => setInterval(tf.value)}
+                  type="button"
+                >
+                  {tf.label}
+                </button>
+              </span>
+            ))}
           </div>
 
-          <div className="historical-data__table-container">
-            <HistoricalDataTable 
-              symbol={selectedSymbol}
-              interval={interval}
-              limit={limit}
-              tradeType={tradeType}
-            />
+          <span className="hd-sep">|</span>
+
+          {/* Trade type pills */}
+          <span className="hd-group-label">Type</span>
+          <span className="hd-sep">|</span>
+          <div className="hd-pills">
+            {TRADE_TYPES.map((t, idx) => (
+              <span key={t.value} className="hd-pill-group">
+                {idx > 0 && <span className="hd-pipe">|</span>}
+                <button
+                  className={`hd-pill ${tradeType === t.value ? 'hd-pill--active' : ''}`}
+                  onClick={() => setTradeType(t.value)}
+                  type="button"
+                >
+                  {t.label}
+                </button>
+              </span>
+            ))}
           </div>
+
+          <span className="hd-sep">|</span>
+
+          {/* Rows pills */}
+          <span className="hd-group-label">Rows</span>
+          <span className="hd-sep">|</span>
+          <div className="hd-pills">
+            {ROW_OPTIONS.map((n, idx) => (
+              <span key={n} className="hd-pill-group">
+                {idx > 0 && <span className="hd-pipe">|</span>}
+                <button
+                  className={`hd-pill ${limit === n ? 'hd-pill--active' : ''}`}
+                  onClick={() => setLimit(n)}
+                  type="button"
+                >
+                  {n}
+                </button>
+              </span>
+            ))}
+          </div>
+
         </div>
-      </Card>
+
+        {/* -- Data table --------------------------------------- */}
+        <Card title={`${selectedSymbol} — Historical Data`}>
+          <HistoricalDataTable
+            symbol={selectedSymbol}
+            interval={interval}
+            limit={limit}
+            tradeType={tradeType}
+          />
+        </Card>
+      </div>
     </AppLayout>
   );
 }

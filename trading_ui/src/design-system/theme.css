@@ -2,23 +2,25 @@
 
 :root {
   /* Colors */
-  --color-bg-primary: #0d1117;
-  --color-bg-secondary: #161b22;
-  --color-bg-card: #21262d;
-  --color-bg-hover: #30363d;
-  --color-border: #30363d;
-  --color-border-muted: #21262d;
-  --color-text-primary: #e6edf3;
+  --color-bg-primary: #0a0e14;
+  --color-bg-secondary: #111820;
+  --color-bg-card: #161d27;
+  --color-bg-hover: #1e2836;
+  --color-border: #232d3a;
+  --color-border-muted: #161d27;
+  --color-text-primary: #e8edf3;
   --color-text-secondary: #8b949e;
-  --color-text-muted: #656d76;
-  --color-accent: #58a6ff;
+  --color-text-muted: #556070;
+  --color-accent: #4da6ff;
   --color-accent-hover: #79c0ff;
-  --color-up: #3fb950;
-  --color-down: #f85149;
-  --color-warning: #d29922;
+  --color-up: #26c462;
+  --color-up-dim: rgba(38,196,98,0.15);
+  --color-down: #f24b4b;
+  --color-down-dim: rgba(242,75,75,0.15);
+  --color-warning: #d4a017;
   --color-neutral: #8b949e;
   --color-gold: #f0c674;
-  
+
   /* Spacing */
   --space-xs: 4px;
   --space-sm: 8px;
@@ -26,7 +28,7 @@
   --space-lg: 24px;
   --space-xl: 32px;
   --space-xxl: 48px;
-  
+
   /* Typography */
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-size-xs: 11px;
@@ -36,23 +38,76 @@
   --font-size-lg: 20px;
   --font-size-xl: 24px;
   --font-size-xxl: 32px;
-  
+
   /* Border radius */
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
   --radius-full: 9999px;
-  
+
   /* Shadows */
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.3);
-  --shadow-modal: 0 8px 32px rgba(0,0,0,0.5);
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.03);
+  --shadow-card-hover: 0 4px 20px rgba(0,0,0,0.5);
+  --shadow-modal: 0 16px 48px rgba(0,0,0,0.6);
+  --shadow-glow-up: 0 0 12px rgba(38,196,98,0.35);
+  --shadow-glow-down: 0 0 12px rgba(242,75,75,0.35);
+  --shadow-glow-accent: 0 0 12px rgba(77,166,255,0.35);
+
+  /* Transitions */
+  --transition-fast: 0.12s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.35s ease;
 }
 
-* { 
-  box-sizing: border-box; 
-  margin: 0; 
-  padding: 0; 
+/* ── Animations ───────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
+}
+
+@keyframes flash-up {
+  0%   { background-color: transparent; color: inherit; }
+  15%  { background-color: rgba(38,196,98,0.22); color: var(--color-up); }
+  100% { background-color: transparent; color: inherit; }
+}
+
+@keyframes flash-down {
+  0%   { background-color: transparent; color: inherit; }
+  15%  { background-color: rgba(242,75,75,0.22); color: var(--color-down); }
+  100% { background-color: transparent; color: inherit; }
+}
+
+@keyframes flash-neutral {
+  0%   { opacity: 1; }
+  20%  { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+@keyframes slide-in-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes refresh-ring {
+  0%   { transform: rotate(0deg);   opacity: 1; }
+  100% { transform: rotate(360deg); opacity: 0.4; }
+}
+
+/* ── Utility classes ───────────────────────────────────── */
+.flash-up      { animation: flash-up   0.8s ease-out; }
+.flash-down    { animation: flash-down 0.8s ease-out; }
+.flash-neutral { animation: flash-neutral 0.5s ease-out; }
+
+/* ── Reset & base ──────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
@@ -61,4 +116,5 @@ body {
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }

@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Load env from trading_bot/.env
 ENV_PATH = Path(__file__).parents[1] / ".env"
@@ -73,23 +73,103 @@ def _persist_access_token(access_token: str) -> None:
     """Persist the Kite access token to trading_bot/.env for restarts."""
     try:
         text = ENV_PATH.read_text(encoding="utf-8") if ENV_PATH.exists() else ""
-        line = f"KITE_ACCESS_TOKEN={access_token}"
+        
+        # Save access token with timestamp
+        timestamp = datetime.now(_IST).isoformat()
+        token_line = f"KITE_ACCESS_TOKEN={access_token}"
+        timestamp_line = f"KITE_TOKEN_TIMESTAMP={timestamp}"
+        
+        # Update or add access token
         if re.search(r"(?m)^KITE_ACCESS_TOKEN\s*=.*$", text):
-            text = re.sub(r"(?m)^KITE_ACCESS_TOKEN\s*=.*$", line, text)
+            text = re.sub(r"(?m)^KITE_ACCESS_TOKEN\s*=.*$", token_line, text)
         else:
             if text and not text.endswith("\n"):
                 text += "\n"
-            text += line + "\n"
+            text += token_line + "\n"
+        
+        # Update or add timestamp
+        if re.search(r"(?m)^KITE_TOKEN_TIMESTAMP\s*=.*$", text):
+            text = re.sub(r"(?m)^KITE_TOKEN_TIMESTAMP\s*=.*$", timestamp_line, text)
+        else:
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += timestamp_line + "\n"
+        
         ENV_PATH.write_text(text, encoding="utf-8")
+        os.environ["KITE_TOKEN_TIMESTAMP"] = timestamp
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not persist KITE_ACCESS_TOKEN to .env: {}", exc)
 
 
+def _persist_credentials(api_key: str, api_secret: str) -> None:
+    """Persist API credentials to trading_bot/.env."""
+    try:
+        text = ENV_PATH.read_text(encoding="utf-8") if ENV_PATH.exists() else ""
+        
+        key_line = f"KITE_API_KEY={api_key}"
+        secret_line = f"KITE_API_SECRET={api_secret}"
+        
+        # Update or add API key
+        if re.search(r"(?m)^KITE_API_KEY\s*=.*$", text):
+            text = re.sub(r"(?m)^KITE_API_KEY\s*=.*$", key_line, text)
+        else:
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += key_line + "\n"
+        
+        # Update or add API secret
+        if re.search(r"(?m)^KITE_API_SECRET\s*=.*$", text):
+            text = re.sub(r"(?m)^KITE_API_SECRET\s*=.*$", secret_line, text)
+        else:
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += secret_line + "\n"
+        
+        ENV_PATH.write_text(text, encoding="utf-8")
+        os.environ["KITE_API_KEY"] = api_key
+        os.environ["KITE_API_SECRET"] = api_secret
+        
+        # Reload dotenv to pick up new values
+        load_dotenv(ENV_PATH, override=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not persist API credentials to .env: {}", exc)
+
+
+def _is_token_expired() -> bool:
+    """Check if the access token is older than 24 hours."""
+    timestamp_str = os.environ.get("KITE_TOKEN_TIMESTAMP", "").strip()
+    if not timestamp_str:
+        return True  # No timestamp = assume expired
+    
+    try:
+        from dateutil import parser
+        token_time = parser.isoparse(timestamp_str)
+        if token_time.tzinfo is None:
+            token_time = token_time.replace(tzinfo=_IST)
+        
+        age = datetime.now(_IST) - token_time
+        # Token expires after 24 hours (with 5 min grace period)
+        return age.total_seconds() > (24 * 60 * 60 - 300)
+    except Exception:
+        return True  # Parse error = assume expired
+
+
 def _is_authenticated() -> bool:
     """Validate the Kite session by probing the API; returns True only when
-    the access token is both present and accepted by Zerodha."""
+    the access token is both present, not expired, and accepted by Zerodha."""
     if PAPER_TRADING:
         return True
+
+    # Check if API credentials are present
+    api_key = os.environ.get("KITE_API_KEY", "").strip()
+    api_secret = os.environ.get("KITE_API_SECRET", "").strip()
+    if not api_key or not api_secret:
+        return False
+
+    # Check if token is expired (24 hours)
+    if _is_token_expired():
+        logger.info("Access token expired (>24 hours old)")
+        return False
 
     # If a live session is already initialised, verify it is still valid.
     if _kite is not None:
@@ -145,6 +225,13 @@ def _init_kite_session(force: bool = False) -> None:
 
 
 def _require_kite_session() -> None:
+    # First check if authentication is valid
+    if not PAPER_TRADING and not _is_authenticated():
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Please login with your Zerodha Kite credentials.",
+        )
+    
     try:
         _init_kite_session()
     except KeyError as exc:
@@ -200,7 +287,53 @@ def _resolve_days_back(interval: str, days_back: int) -> int:
 
 
 class AuthExchangeRequest(BaseModel):
-    callback_url: str
+    callback_url: str | None = None
+    request_token: str | None = None
+
+    @model_validator(mode="after")
+    def validate_input(self) -> "AuthExchangeRequest":
+        callback_url = (self.callback_url or "").strip()
+        request_token = (self.request_token or "").strip()
+        if not callback_url and not request_token:
+            raise ValueError("Either callback_url or request_token is required.")
+        self.callback_url = callback_url or None
+        self.request_token = request_token or None
+        return self
+
+
+class CredentialsRequest(BaseModel):
+    api_key: str
+    api_secret: str
+
+
+@app.get("/api/auth/credentials-status")
+def credentials_status() -> dict[str, Any]:
+    """Check if API credentials are configured."""
+    api_key = os.environ.get("KITE_API_KEY", "").strip()
+    api_secret = os.environ.get("KITE_API_SECRET", "").strip()
+    
+    return {
+        "has_credentials": bool(api_key and api_secret),
+        "api_key_prefix": api_key[:8] + "..." if api_key else None,
+    }
+
+
+@app.post("/api/auth/save-credentials")
+def save_credentials(body: CredentialsRequest) -> dict[str, str]:
+    """Save API credentials to .env file."""
+    api_key = body.api_key.strip()
+    api_secret = body.api_secret.strip()
+    
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key is required")
+    if not api_secret:
+        raise HTTPException(status_code=400, detail="API Secret is required")
+    
+    try:
+        _persist_credentials(api_key, api_secret)
+        return {"status": "ok", "message": "Credentials saved successfully"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to save credentials: {exc}")
 
 
 @app.get("/api/auth/status")
@@ -217,8 +350,30 @@ def auth_status() -> dict[str, Any]:
             "authenticated": True,
             "requires_login": False,
             "login_url": None,
+            "has_credentials": True,
+            "token_expired": False,
         }
 
+    # Check if API credentials exist
+    api_key = os.environ.get("KITE_API_KEY", "").strip()
+    api_secret = os.environ.get("KITE_API_SECRET", "").strip()
+    has_credentials = bool(api_key and api_secret)
+    
+    if not has_credentials:
+        return {
+            "paper_trading": False,
+            "authenticated": False,
+            "requires_login": False,
+            "requires_credentials": True,
+            "has_credentials": False,
+            "login_url": None,
+            "token_expired": False,
+        }
+
+    # Check if token is expired
+    token_expired = _is_token_expired()
+    
+    # Check if authenticated (includes credential validation)
     authenticated = _is_authenticated()
 
     # Eagerly initialise the full session when the token is valid but the
@@ -231,7 +386,7 @@ def auth_status() -> dict[str, Any]:
 
     # Build the Kite login URL upfront so the UI can open it immediately.
     login_url: str | None = None
-    if not authenticated and KiteConnect is not None:
+    if not authenticated and KiteConnect is not None and has_credentials:
         try:
             auth_mgr = KiteAuthManager()
             login_url = KiteConnect(api_key=auth_mgr.api_key).login_url()
@@ -241,8 +396,11 @@ def auth_status() -> dict[str, Any]:
     return {
         "paper_trading": PAPER_TRADING,
         "authenticated": authenticated,
-        "requires_login": not authenticated,
+        "requires_login": not authenticated and has_credentials,
+        "requires_credentials": not has_credentials,
+        "has_credentials": has_credentials,
         "login_url": login_url,
+        "token_expired": token_expired,
     }
 
 
@@ -271,26 +429,33 @@ def auth_login_url() -> dict[str, str]:
 
 @app.post("/api/auth/exchange")
 def auth_exchange(body: AuthExchangeRequest) -> dict[str, str]:
-    """Exchange request_token from callback URL for access token."""
+    """Exchange request_token for access token.
+
+    Accepts either a full callback URL from Zerodha or a raw request_token.
+    """
     if PAPER_TRADING:
         return {"status": "ok", "message": "Paper mode active; authentication skipped."}
 
     if KiteConnect is None:
         raise HTTPException(status_code=500, detail="kiteconnect package is not installed.")
 
-    callback_url = body.callback_url.strip()
-    if not callback_url:
-        raise HTTPException(status_code=400, detail="callback_url is required.")
+    request_token = (body.request_token or "").strip()
+    callback_url = (body.callback_url or "").strip()
 
-    parsed = urlparse(callback_url)
-    params = parse_qs(parsed.query)
-    request_token = params.get("request_token", [""])[0].strip()
-    status = params.get("status", [""])[0].strip().lower()
+    if not request_token and callback_url:
+        parsed = urlparse(callback_url)
+        params = parse_qs(parsed.query)
+        request_token = params.get("request_token", [""])[0].strip()
+        status = params.get("status", [""])[0].strip().lower()
 
-    if status and status != "success":
-        raise HTTPException(status_code=400, detail="Kite login status is not success.")
+        if status and status != "success":
+            raise HTTPException(status_code=400, detail="Kite login status is not success.")
+
     if not request_token:
-        raise HTTPException(status_code=400, detail="request_token not found in callback_url.")
+        raise HTTPException(
+            status_code=400,
+            detail="request_token is required. Provide request_token directly or in callback_url.",
+        )
 
     try:
         auth = KiteAuthManager()
@@ -317,6 +482,79 @@ def auth_exchange(body: AuthExchangeRequest) -> dict[str, str]:
         raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Failed to exchange request token: {exc}") from exc
+
+
+@app.post("/api/auth/test-connection")
+def test_connection() -> dict[str, Any]:
+    """Test the Kite connection by making actual API calls.
+    
+    This validates credentials work by:
+    1. Fetching user profile
+    2. Fetching instruments list
+    3. Fetching a sample quote (if possible)
+    """
+    if PAPER_TRADING:
+        return {
+            "status": "ok",
+            "message": "Paper trading mode - no live connection needed",
+            "tests_passed": ["paper_mode"],
+        }
+    
+    tests_passed = []
+    test_details = []
+    
+    try:
+        # Test 1: Initialize session
+        _init_kite_session(force=True)
+        if _kite is None:
+            raise HTTPException(status_code=503, detail="Failed to initialize Kite session")
+        tests_passed.append("session_init")
+        test_details.append("Session initialized successfully")
+        
+        # Test 2: Fetch profile
+        try:
+            profile = _kite.profile()
+            user_name = profile.get("user_name", "Unknown")
+            tests_passed.append("profile")
+            test_details.append(f"Profile fetched: {user_name}")
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Profile fetch failed: {str(e)}")
+        
+        # Test 3: Fetch instruments (at least check we can access the endpoint)
+        if _instruments:
+            try:
+                _instruments.warm_up(["NSE"])
+                tests_passed.append("instruments")
+                test_details.append("Instruments cache loaded")
+            except Exception as e:
+                logger.warning("Instruments fetch failed: {}", e)
+                test_details.append(f"Instruments warning: {str(e)}")
+        
+        # Test 4: Try a sample quote
+        if _market:
+            try:
+                quote = _market.get_quote(["NSE:RELIANCE"])
+                if quote:
+                    tests_passed.append("quote")
+                    test_details.append("Sample quote fetched successfully")
+            except Exception as e:
+                logger.warning("Quote fetch failed: {}", e)
+                test_details.append(f"Quote warning: {str(e)}")
+        
+        return {
+            "status": "ok",
+            "message": "Connection test successful",
+            "tests_passed": tests_passed,
+            "details": test_details,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Connection test failed: {str(exc)}"
+        ) from exc
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────

@@ -1,38 +1,107 @@
 .ip-grid {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 2px;
 }
 
+.ip-empty {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  padding: var(--space-sm) 0;
+}
+
+/* Section heading */
 .ip-section {
   font-size: var(--font-size-xs);
   font-weight: 700;
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   margin-top: var(--space-md);
+  margin-bottom: var(--space-xs);
   padding-bottom: var(--space-xs);
   border-bottom: 1px solid var(--color-border-muted);
 }
 
-.ip-section:first-child {
-  margin-top: 0;
-}
+.ip-section:first-child { margin-top: 0; }
 
-.ip-card {
+/* Data row */
+.ip-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-xs) 0;
+  padding: 5px var(--space-xs);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
 }
+
+.ip-row:hover { background: var(--color-bg-hover); }
 
 .ip-label {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.ip-value-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
 }
 
 .ip-value {
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
 }
+
+.ip-sub {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* RSI bar row */
+.ip-rsi-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px var(--space-xs);
+  border-radius: var(--radius-sm);
+}
+
+.ip-rsi-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+/* RSI progress bar */
+.rsi-bar-track {
+  position: relative;
+  width: 100px;
+  height: 4px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-full);
+  overflow: visible;
+}
+
+.rsi-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width var(--transition-base);
+}
+
+/* OB / OS tick marks */
+.rsi-bar-ob, .rsi-bar-os {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 8px;
+  background: var(--color-border);
+}
+
+.rsi-bar-ob { left: 70%; }
+.rsi-bar-os { left: 30%; }
