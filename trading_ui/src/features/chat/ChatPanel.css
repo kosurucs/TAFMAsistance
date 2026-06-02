@@ -68,6 +68,15 @@
   word-wrap: break-word;
 }
 
+.chat-code {
+  font-family: monospace;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: 0.9em;
+}
+
 .chat-bubble.user .bubble-text {
   background: var(--color-accent);
   color: #fff;

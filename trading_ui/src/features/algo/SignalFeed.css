@@ -1,0 +1,188 @@
+.signal-feed {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  box-shadow: var(--shadow-card);
+}
+
+.signal-feed__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+}
+
+.signal-feed__title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.signal-feed__refresh {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast);
+}
+.signal-feed__refresh:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.signal-feed__error {
+  font-size: var(--font-size-sm);
+  color: var(--color-down);
+  margin-bottom: var(--space-sm);
+}
+
+.signal-feed__empty {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  padding: var(--space-xl) 0;
+  text-align: center;
+}
+
+.signal-feed__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+/* ── Signal Card ──────────────────────────────────────────────────────── */
+
+.signal-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color var(--transition-fast);
+}
+
+.signal-card--buy  { border-left: 3px solid var(--color-up); }
+.signal-card--sell { border-left: 3px solid var(--color-down); }
+
+.signal-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  user-select: none;
+}
+.signal-card__header:hover {
+  background: var(--color-bg-hover);
+}
+
+.signal-card__left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.signal-card__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.signal-card__action {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.05em;
+}
+.signal-card__action--buy  { background: var(--color-up-dim);   color: var(--color-up); }
+.signal-card__action--sell { background: var(--color-down-dim); color: var(--color-down); }
+
+.signal-card__symbol {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.signal-card__strategy {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.signal-card__conf {
+  font-size: var(--font-size-sm);
+  color: var(--color-gold);
+  font-weight: 600;
+}
+
+.signal-card__pass {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.signal-card__pass--ok   { background: var(--color-up-dim);   color: var(--color-up); }
+.signal-card__pass--fail { background: var(--color-down-dim); color: var(--color-down); }
+
+.signal-card__time {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.signal-card__expand {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.signal-card__body {
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.signal-card__reason {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-sm);
+  line-height: 1.5;
+}
+
+.signal-card__prices {
+  display: flex;
+  gap: var(--space-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-sm);
+  flex-wrap: wrap;
+}
+.signal-card__prices strong { color: var(--color-text-primary); }
+.signal-card__sl { color: var(--color-down) !important; }
+.signal-card__tp { color: var(--color-up) !important; }
+
+.signal-card__checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.signal-card__check {
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.signal-card__check--pass { background: var(--color-up-dim);   color: var(--color-up); }
+.signal-card__check--fail { background: var(--color-down-dim); color: var(--color-down); }
+
+.signal-card__note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-style: italic;
+}

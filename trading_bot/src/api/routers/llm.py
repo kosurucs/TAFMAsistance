@@ -19,6 +19,8 @@ from src.api.dependencies import get_data_fetcher, get_llm_chain
 from src.api.routers.market import _make_stub_df
 from src.tools.data_pipeline import DataPipeline
 from src.tools.kite_tools import KiteDataFetcher
+from src.utils.local_llm import build_compact_context, is_model_cached, model_info, query_local_llm
+from src.utils.rr_calculator import calculate_sl_tp
 from src.utils.technical_analysis import compute_indicators, format_market_state_prompt
 
 router = APIRouter(prefix="/llm")
@@ -118,6 +120,84 @@ def llm_analyze(
         "reason": parsed.get("reason", ""),
         "indicators": indicators,
         "stub_data": fetcher is None,
+    }
+
+
+@router.get("/local/info", summary="Local GPT-2 model metadata")
+def local_llm_info() -> dict:
+    """Return metadata about the local GPT-2 model (architecture, weight path, cache status)."""
+    return model_info()
+
+
+@router.post("/local/analyze", summary="Get BUY/SELL/WAIT from local GPT-2 (no Ollama)")
+def local_llm_analyze(
+    body: AnalyzeRequest,
+    fetcher: KiteDataFetcher | None = Depends(get_data_fetcher),
+) -> dict:
+    """
+    Run market analysis using the local GPT-2 model loaded from
+    rasbt/LLMs-from-scratch architecture.  No Ollama required.
+
+    Weights (~500 MB) are downloaded from HuggingFace on first call and
+    cached in trading_bot/models/.
+    """
+    symbol = body.symbol.upper()
+
+    # ── Fetch OHLCV ──────────────────────────────────────────────────────────
+    if fetcher is not None:
+        try:
+            pipeline = DataPipeline(fetcher)
+            token = fetcher.lookup_instrument_token(body.exchange, symbol)
+            df = pipeline.get_ohlcv_df(
+                instrument_token=token,
+                tradingsymbol=symbol,
+                interval="minute",
+                days_back=1,
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Instrument '{symbol}' not found.")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"Kite data error: {exc}")
+    else:
+        df = _make_stub_df(symbol)
+
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No data for '{symbol}'.")
+
+    # ── Compute indicators ────────────────────────────────────────────────────
+    try:
+        indicators = compute_indicators(df)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Indicator error: {exc}")
+
+    # ── Compute R:R so GPT-2 few-shot examples can match on rr= field ────────
+    rr_result = None
+    try:
+        rr_result = calculate_sl_tp("BUY", indicators["close"], indicators["atr"])
+    except Exception:  # noqa: BLE001
+        pass  # R:R is best-effort
+
+    # ── Build compact context string (fits GPT-2's 1024-token budget) ─────────
+    # format_market_state_prompt() is designed for Mistral/Llama instruction-
+    # following models and produces ~600+ tokens.  GPT-2 needs a compact
+    # key=value line so the few-shot examples in _SYSTEM_PROMPT are effective.
+    compact_ctx = build_compact_context(symbol, indicators, rr_result)
+    if body.question:
+        compact_ctx += f" {body.question}"
+
+    # ── Local GPT-2 inference (auto-downloads weights on first call) ──────────
+    result = query_local_llm(compact_ctx)
+    if rr_result is not None and result.get("action") != "WAIT":
+        result.setdefault("suggested_sl", round(rr_result.sl, 2))
+        result.setdefault("suggested_tp", round(rr_result.tp, 2))
+
+    return {
+        "symbol": symbol,
+        "source": "local-gpt2",
+        "stub_data": fetcher is None,
+        "weights_cached": is_model_cached(),
+        "indicators": indicators,
+        **result,
     }
 
 

@@ -7,6 +7,7 @@ import Backtest from './pages/Backtest';
 import Simulate from './pages/Simulate';
 import LLMStudio from './pages/LLMStudio';
 import HistoricalData from './pages/HistoricalData';
+import Algo from './pages/Algo';
 import Login from './pages/Login';
 import useAuthStore from './store/authStore';
 
@@ -69,6 +70,7 @@ function AppContent() {
       <Route path="/backtest" element={<ProtectedRoute><Backtest /></ProtectedRoute>} />
       <Route path="/simulate" element={<ProtectedRoute><Simulate /></ProtectedRoute>} />
       <Route path="/llm-studio" element={<ProtectedRoute><LLMStudio /></ProtectedRoute>} />
+      <Route path="/algo" element={<ProtectedRoute><Algo /></ProtectedRoute>} />
     </Routes>
   );
 }

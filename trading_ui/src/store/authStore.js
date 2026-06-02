@@ -111,6 +111,16 @@ const useAuthStore = create((set, get) => ({
     }
   },
 
+  // Allow guest / paper-trading access without Kite login
+  setGuestMode: () => {
+    set({
+      authenticated: false,
+      requiresLogin: false,
+      loading: false,
+      error: null,
+    });
+  },
+
   // Test connection with actual API calls
   testConnection: async () => {
     try {

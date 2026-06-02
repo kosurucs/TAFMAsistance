@@ -1,0 +1,116 @@
+.algo-engine {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  box-shadow: var(--shadow-card);
+}
+
+.algo-engine__title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.algo-engine__status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-neutral);
+  flex-shrink: 0;
+}
+.algo-engine__status-dot--running {
+  background: var(--color-up);
+  box-shadow: 0 0 6px var(--color-up);
+  animation: pulse-up 1.5s infinite;
+}
+
+@keyframes pulse-up {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.algo-engine__stat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.algo-engine__stat {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.algo-engine__stat-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.algo-engine__stat-value {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.algo-engine__watchlist {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-md);
+  line-height: 1.6;
+}
+
+.algo-engine__watchlist strong {
+  color: var(--color-text-primary);
+}
+
+.algo-engine__btn {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.algo-engine__btn:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.algo-engine__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.algo-engine__error {
+  margin-top: var(--space-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-down);
+}
+
+.algo-engine__last-run {
+  margin-top: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.algo-engine__analysis-note {
+  margin-top: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-warning);
+  background: rgba(212,160,23,0.08);
+  border-radius: var(--radius-sm);
+  padding: var(--space-xs) var(--space-sm);
+}

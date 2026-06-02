@@ -142,6 +142,13 @@ def get_portfolio() -> KitePortfolio | None:
 
 
 def get_data_fetcher() -> Any:
+    # Prefer the fetcher held by the api.py module (kept fresh on re-auth).
+    import sys
+    api_mod = sys.modules.get("src.api")
+    if api_mod is not None:
+        fresh = getattr(api_mod, "_data_fetcher", None)
+        if fresh is not None:
+            return fresh
     return _data_fetcher
 
 

@@ -1,0 +1,223 @@
+/* ResearchPanel – uses only CSS custom properties from theme.css */
+
+.research-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+/* Input row */
+.research-panel__input-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.research-panel__symbol-input {
+  flex: 1 1 180px;
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.research-panel__symbol-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.research-panel__exchange-select {
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.research-panel__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.research-panel__run-btn {
+  padding: var(--spacing-2) var(--spacing-4);
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.research-panel__run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Error */
+.research-panel__error {
+  color: var(--color-down);
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-2);
+}
+
+/* Results grid */
+.research-panel__results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--spacing-4);
+}
+
+.research-panel__card {
+  min-width: 0;
+}
+
+/* Decision block */
+.research-panel__decision-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-2);
+}
+
+.research-panel__reason {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  margin: var(--spacing-2) 0;
+}
+
+.research-panel__levels {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.research-panel__sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+  margin-top: var(--spacing-3);
+}
+
+.research-panel__source-tag {
+  font-size: var(--font-size-xs);
+  padding: 2px var(--spacing-2);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+}
+
+/* Company overview */
+.research-panel__company-name {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-1);
+}
+
+.research-panel__description {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-3);
+  line-height: 1.5;
+}
+
+/* Key-value grid */
+.research-panel__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-1) var(--spacing-3);
+}
+
+.research-panel__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--spacing-1) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-xs);
+}
+
+.research-panel__row-label {
+  color: var(--color-text-secondary);
+}
+
+.research-panel__row-value {
+  color: var(--color-text-primary);
+  font-weight: 500;
+  text-align: right;
+}
+
+/* Shareholding bar */
+.research-panel__holding-bar-wrap {
+  margin-bottom: var(--spacing-3);
+}
+
+.research-panel__holding-bar {
+  display: flex;
+  height: 14px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: var(--color-surface-raised);
+  margin-bottom: var(--spacing-2);
+}
+
+.research-panel__holding-segment--promoter { background: var(--color-accent); }
+.research-panel__holding-segment--inst     { background: var(--color-up); }
+.research-panel__holding-segment--public   { background: var(--color-border); }
+
+.research-panel__holding-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.research-panel__holding-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.research-panel__holding-dot--promoter { background: var(--color-accent); }
+.research-panel__holding-dot--inst     { background: var(--color-up); }
+.research-panel__holding-dot--public   { background: var(--color-border); }
+
+/* Tables */
+.research-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-xs);
+}
+
+.research-panel__table th {
+  color: var(--color-text-secondary);
+  text-align: left;
+  padding: var(--spacing-1) var(--spacing-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.research-panel__table td {
+  padding: var(--spacing-1) var(--spacing-2);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}

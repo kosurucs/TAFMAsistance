@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from src.api.routers import backtest, bot, llm, market, portfolio, trade
+from src.api.routers import backtest, bot, llm, market, portfolio, research, trade
 
 app = FastAPI(
     title="TAFM Trading Bot API",
@@ -50,6 +50,7 @@ app.include_router(bot.router, tags=["Bot Control"])
 app.include_router(market.router, tags=["Market Data"])
 app.include_router(portfolio.router, tags=["Portfolio"])
 app.include_router(llm.router, tags=["LLM"])
+app.include_router(research.router, tags=["Research"])
 app.include_router(trade.router, tags=["Trade Execution"])
 
 

@@ -66,6 +66,31 @@ function StructuredMessage({ data }) {
   );
 }
 
+// Render markdown-lite: bold, italic, inline code, and newlines
+function renderMarkdown(text) {
+  // Split on double-newline for paragraphs, single-newline for <br>
+  const lines = text.split('\n');
+  const result = [];
+  lines.forEach((line, li) => {
+    // Process inline formatting per segment
+    const parts = [];
+    // Pattern: **bold**, *italic*, `code`
+    const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
+    let last = 0, m;
+    while ((m = re.exec(line)) !== null) {
+      if (m.index > last) parts.push(line.slice(last, m.index));
+      if (m[2] !== undefined) parts.push(<strong key={`b${li}-${m.index}`}>{m[2]}</strong>);
+      else if (m[3] !== undefined) parts.push(<em key={`i${li}-${m.index}`}>{m[3]}</em>);
+      else if (m[4] !== undefined) parts.push(<code key={`c${li}-${m.index}`} className="chat-code">{m[4]}</code>);
+      last = re.lastIndex;
+    }
+    if (last < line.length) parts.push(line.slice(last));
+    result.push(<span key={li}>{parts}</span>);
+    if (li < lines.length - 1) result.push(<br key={`br${li}`} />);
+  });
+  return result;
+}
+
 export function ChatPanel() {
   const { selectedSymbol, indicators } = useMarketStore();
   const { messages, loading, addMessage, clearMessages, setLoading } = useChatStore();
@@ -175,7 +200,7 @@ export function ChatPanel() {
               {structured ? (
                 <StructuredMessage data={structured} />
               ) : (
-                <div className="bubble-text">{msg.text}</div>
+                <div className="bubble-text">{renderMarkdown(msg.text)}</div>
               )}
               <div className="bubble-time">{toIST(msg.time)} IST</div>
             </div>

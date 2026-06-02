@@ -123,18 +123,18 @@ def compute_indicators(df: pd.DataFrame) -> dict[str, Any]:
     stoch_signal = _classify_stoch(stoch_k_val)
 
     return {
-        "close":        close,
+        "close":        round(close, 2),
         "volume":       int(latest.get("volume", 0)),
         # Momentum
-        "rsi":          rsi,
+        "rsi":          round(rsi, 2),
         "stoch_k":      round(stoch_k_val, 1),
         "stoch_d":      round(stoch_d_val, 1),
         "stoch_signal": stoch_signal,
         # Trend / MA
-        "ema_fast":     ema_fast,
-        "ema_slow":     ema_slow,
-        "ema_50":       ema_50,
-        "ema_200":      ema_200,
+        "ema_fast":     round(ema_fast, 2),
+        "ema_slow":     round(ema_slow, 2),
+        "ema_50":       round(ema_50, 2),
+        "ema_200":      round(ema_200, 2),
         "trend":        trend,
         # MACD
         "macd":         round(macd_val, 4),
@@ -142,9 +142,9 @@ def compute_indicators(df: pd.DataFrame) -> dict[str, Any]:
         "macd_hist":    round(macd_hist, 4),
         "macd_label":   macd_label,
         # Volatility
-        "bb_upper":     bb_upper,
-        "bb_middle":    bb_middle,
-        "bb_lower":     bb_lower,
+        "bb_upper":     round(bb_upper, 2),
+        "bb_middle":    round(bb_middle, 2),
+        "bb_lower":     round(bb_lower, 2),
         "bb_signal":    bb_signal,
         "atr":          round(atr, 2),
         # Volume / price

@@ -41,7 +41,7 @@ export default function Login() {
   const [searchParams]  = useSearchParams();
   const {
     authenticated, paperTrading, tokenExpired, loginUrl,
-    checkAuthStatus, getLoginUrl, exchangeToken,
+    checkAuthStatus, getLoginUrl, exchangeToken, setGuestMode,
   } = useAuthStore();
 
   const [phase,       setPhase]       = useState('idle');
@@ -128,7 +128,7 @@ export default function Login() {
 
   const handleCancelWait = () => { stopPolling(); setPhase('idle'); };
 
-  const handleSkip = () => navigate('/');
+  const handleSkip = () => { setGuestMode(); navigate('/'); };
 
   const handleManualExchange = async () => {
     const val = manualToken.trim();

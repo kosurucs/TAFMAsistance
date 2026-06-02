@@ -38,9 +38,16 @@ bitsandbytes>=0.42.0
 datasets>=2.18.0
 trl>=0.8.6
 
+# Local LLM (LLMs-from-scratch – rasbt/LLMs-from-scratch on GitHub)
+# Install without deps to avoid tensorflow conflict:  pip install llms_from_scratch --no-deps
+llms_from_scratch>=1.0.17
+tiktoken>=0.5.1
+matplotlib>=3.7.1
+
 # Utilities
 schedule>=1.2.1
 loguru>=0.7.2
+beautifulsoup4>=4.12.0
 
 # Testing
 pytest>=8.0.0

@@ -10,6 +10,7 @@ const NAV_TABS = [
   { label: 'Backtest',   path: '/backtest' },
   { label: 'Simulate',   path: '/simulate' },
   { label: 'LLM Studio', path: '/llm-studio' },
+  { label: 'Algo',       path: '/algo' },
 ];
 
 const REFRESH_INTERVAL_MS = 15_000;

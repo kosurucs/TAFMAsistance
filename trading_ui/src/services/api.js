@@ -60,6 +60,16 @@ export const placeOrder = (order) => request('/api/order', { method: 'POST', bod
 export const sendChatMessage = (message, symbol, indicators) =>
   request('/api/chat', { method: 'POST', body: JSON.stringify({ message, symbol, indicators }) });
 
+// Research – comprehensive multi-source instrument analysis
+export const researchAnalyze = (symbol, exchange = 'NSE', deep = true, useCache = true) =>
+  request('/research/analyze', {
+    method: 'POST',
+    body: JSON.stringify({ symbol, exchange, deep, use_cache: useCache }),
+  });
+export const getResearchKnowledge = (symbol) => request(`/research/knowledge/${symbol}`);
+export const listResearchKnowledge = () => request('/research/knowledge');
+export const getTrainingStats = () => request('/research/training-stats');
+
 // Backtest
 export const startBacktest = (symbol, years = 20, options = {}) => {
   const params = new URLSearchParams({ years });
@@ -93,6 +103,14 @@ export const checkCredentialsStatus = () => request('/api/auth/credentials-statu
 export const saveCredentials = (apiKey, apiSecret) =>
   request('/api/auth/save-credentials', { method: 'POST', body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret }) });
 export const testConnection = () => request('/api/auth/test-connection', { method: 'POST' });
+
+// Algo Engine
+export const getAlgoStatus      = ()           => request('/algo/status');
+export const runAlgoCycle       = (body = {})  => request('/algo/run', { method: 'POST', body: JSON.stringify(body) });
+export const getAlgoSignals     = (limit = 50) => request(`/algo/signals?limit=${limit}`);
+export const getAlgoStrategies  = ()           => request('/algo/strategies');
+export const toggleAlgoStrategy = (name)       => request(`/algo/strategies/${encodeURIComponent(name)}/toggle`, { method: 'POST' });
+export const clearAlgoSignals   = ()           => request('/algo/signals', { method: 'DELETE' });
 
 // Axios-compatible API object for zustand store
 export const api = {
