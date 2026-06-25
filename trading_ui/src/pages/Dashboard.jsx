@@ -7,7 +7,6 @@ import IntervalSelector from '../features/chart/IntervalSelector';
 import { IndicatorPanel } from '../features/analysis/IndicatorPanel';
 import { QuoteBar } from '../features/trading/QuoteBar';
 import { SymbolSearch } from '../features/trading/SymbolSearch';
-import MarketDepthTable from '../features/trading/MarketDepthTable';
 import { ScenarioPanel } from '../features/analysis/ScenarioPanel';
 import './Dashboard.css';
 
@@ -43,9 +42,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="dashboard__market-depth">
-          <MarketDepthTable />
-        </div>
       </div>
     </AppLayout>
   );

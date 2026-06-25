@@ -1,151 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
-import { createChart } from 'lightweight-charts';
+import { useRef, useState, useEffect } from 'react';
 import { useMarketStore } from '../../store';
+import { useChartAdapter } from './useChartAdapter';
 import './CandleChart.css';
 
 const MIN_HEIGHT = 200;
 const MAX_HEIGHT = 1200;
 const MIN_WIDTH = 320;
 
-// Convert UTC timestamp to IST (UTC+5:30 = +19800 seconds)
-const toIST = (utcTimestamp) => utcTimestamp + 19800;
-
 // Interval mapping for display
 const INTERVAL_MAP = {
-  '1m': 'minute', 
-  '5m': '5minute', 
-  '15m': '15minute', 
+  '1m': 'minute',
+  '5m': '5minute',
+  '15m': '15minute',
   '30m': '30minute',
-  '1h': '60minute', 
-  '1D': 'day', 
-  '1W': 'week', 
-  '1M': 'month'
+  '1h': '60minute',
+  '1D': 'day',
+  '1W': 'week',
+  '1M': 'month',
 };
 
 export function CandleChart() {
   const { selectedSymbol, candles, interval } = useMarketStore();
-  const hostRef = useRef(null);
+  const hostRef    = useRef(null);
   const wrapperRef = useRef(null);
-  const chartRef = useRef(null);
-  const candleSeriesRef = useRef(null);
-  const volSeriesRef = useRef(null);
   const [canvasHeight, setCanvasHeight] = useState(520);
   const [wrapperWidth, setWrapperWidth] = useState(null);
 
-  // Get colors from CSS variables
-  const upColor = getComputedStyle(document.documentElement).getPropertyValue('--color-up').trim();
-  const downColor = getComputedStyle(document.documentElement).getPropertyValue('--color-down').trim();
-  const bgPrimary = getComputedStyle(document.documentElement).getPropertyValue('--color-bg-primary').trim();
-  const textPrimary = getComputedStyle(document.documentElement).getPropertyValue('--color-text-primary').trim();
-  const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--color-border').trim();
-  const borderMuted = getComputedStyle(document.documentElement).getPropertyValue('--color-border-muted').trim();
+  // Chart adapter — clean, decoupled update methods
+  const { setCandles } = useChartAdapter(hostRef, { height: canvasHeight });
 
-  // Create chart once on mount; destroy on unmount
+  // Feed candles whenever store data changes
   useEffect(() => {
-    const el = hostRef.current;
-    if (!el) return;
-
-    const chart = createChart(el, {
-      layout: {
-        background: { color: bgPrimary },
-        textColor: textPrimary,
-      },
-      grid: {
-        vertLines: { color: borderMuted },
-        horzLines: { color: borderMuted },
-      },
-      crosshair: { mode: 1 },
-      rightPriceScale: { borderColor },
-      timeScale: {
-        borderColor,
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      width: el.clientWidth,
-      height: canvasHeight,
-    });
-    chartRef.current = chart;
-
-    const candleSeries = chart.addCandlestickSeries({
-      upColor,
-      downColor,
-      borderUpColor: upColor,
-      borderDownColor: downColor,
-      wickUpColor: upColor,
-      wickDownColor: downColor,
-    });
-    candleSeriesRef.current = candleSeries;
-
-    const volSeries = chart.addHistogramSeries({
-      color: `${upColor}44`,
-      priceFormat: { type: 'volume' },
-      priceScaleId: 'vol',
-    });
-    chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-    volSeriesRef.current = volSeries;
-
-    // Fit on window resize
-    const ro = new ResizeObserver(() => {
-      if (chartRef.current) {
-        chartRef.current.applyOptions({ width: el.clientWidth });
-      }
-    });
-    ro.observe(el);
-
-    return () => {
-      ro.disconnect();
-      chart.remove();
-      chartRef.current = null;
-      candleSeriesRef.current = null;
-      volSeriesRef.current = null;
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Update height when user drags handle
-  useEffect(() => {
-    if (chartRef.current) {
-      chartRef.current.applyOptions({ height: canvasHeight });
-    }
-  }, [canvasHeight]);
-
-  // Feed new candle data whenever candles change
-  useEffect(() => {
-    if (!candleSeriesRef.current || !volSeriesRef.current) return;
-    if (!candles || candles.length === 0) {
-      candleSeriesRef.current.setData([]);
-      volSeriesRef.current.setData([]);
-      return;
-    }
-
-    const ohlc = candles.map(c => {
-      // Convert timestamp to IST
-      const timestamp = c.timestamp || c.time;
-      // Backend sends Unix seconds (number), not milliseconds or ISO strings
-      const utcSeconds = typeof timestamp === 'number' ? timestamp : Math.floor(new Date(timestamp).getTime() / 1000);
-      return {
-        time: toIST(utcSeconds),
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      };
-    });
-
-    const vol = candles.map(c => {
-      const timestamp = c.timestamp || c.time;
-      // Backend sends Unix seconds (number), not milliseconds or ISO strings
-      const utcSeconds = typeof timestamp === 'number' ? timestamp : Math.floor(new Date(timestamp).getTime() / 1000);
-      return {
-        time: toIST(utcSeconds),
-        value: c.volume,
-        color: c.close >= c.open ? `${upColor}44` : `${downColor}44`,
-      };
-    });
-
-    candleSeriesRef.current.setData(ohlc);
-    volSeriesRef.current.setData(vol);
-    chartRef.current.timeScale().fitContent();
-  }, [candles, upColor, downColor]);
+    setCandles(candles);
+  }, [candles, setCandles]);
 
   const startDrag = (e, type) => {
     e.preventDefault();
