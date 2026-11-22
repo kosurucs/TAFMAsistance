@@ -25,11 +25,13 @@ app = _module.app
 # ── Mount routers that are NOT in the legacy api.py ──────────────────────────
 # (bot, market, portfolio, trade routers are already covered inline in api.py)
 try:
-    from src.api.routers import backtest, llm, research, algo  # noqa: E402
+    from src.api.routers import backtest, llm, research, algo, indicators, scenario  # noqa: E402
     app.include_router(backtest.router, tags=["Backtest"])
     app.include_router(llm.router, tags=["LLM"])
     app.include_router(research.router, tags=["Research"])
     app.include_router(algo.router, tags=["Algo"])
+    app.include_router(indicators.router, tags=["Indicators"])
+    app.include_router(scenario.router, tags=["Scenario"])
 except Exception as _e:  # pragma: no cover
     import warnings
     warnings.warn(f"ui_api: failed to mount extended routers: {_e}")

@@ -95,6 +95,51 @@ class DataPipeline:
         """
         return self._fetcher.get_quote(symbols)
 
+    def get_ohlcv_df_range(
+        self,
+        instrument_token: int,
+        tradingsymbol: str,
+        start_dt: datetime,
+        end_dt: datetime,
+        interval: str = "minute",
+    ) -> pd.DataFrame:
+        """Return OHLCV candles for an explicit datetime range.
+
+        Args:
+            instrument_token: Zerodha numeric instrument token.
+            tradingsymbol: Human-readable symbol (kept for interface consistency).
+            start_dt: Inclusive range start datetime.
+            end_dt: Inclusive range end datetime.
+            interval: Kite candle interval string (e.g. ``"minute"``).
+
+        Returns:
+            DataFrame indexed by ``date`` (UTC-aware timestamps).
+        """
+        _ = tradingsymbol  # reserved for potential range-cache naming
+        candles: list[dict[str, Any]] = self._fetcher.get_ohlcv_range(
+            instrument_token,
+            start_dt=start_dt,
+            end_dt=end_dt,
+            interval=interval,
+        )
+
+        if not candles:
+            logger.warning(
+                "No candles returned for token {} in range {} -> {}.",
+                instrument_token,
+                start_dt,
+                end_dt,
+            )
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+        df = pd.DataFrame(candles)
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.set_index("date").sort_index()
+        df = df[~df.index.duplicated(keep="last")]
+        return df[["open", "high", "low", "close", "volume"]].apply(
+            pd.to_numeric, errors="coerce"
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

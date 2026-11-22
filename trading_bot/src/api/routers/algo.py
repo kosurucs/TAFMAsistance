@@ -15,7 +15,9 @@ Analysis-only: no orders placed. All signals are logged recommendations only.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -31,6 +33,18 @@ from src.utils.algo_strategies import STRATEGY_REGISTRY
 from src.utils.risk_manager import RiskManager
 
 router = APIRouter(prefix="/algo", tags=["Algo"])
+_IST = ZoneInfo("Asia/Kolkata")
+_ALLOWED_INTERVALS = {
+    "minute",
+    "3minute",
+    "5minute",
+    "15minute",
+    "30minute",
+    "60minute",
+    "day",
+    "week",
+    "month",
+}
 
 
 # ─── Pydantic models ──────────────────────────────────────────────────────────
@@ -38,6 +52,9 @@ router = APIRouter(prefix="/algo", tags=["Algo"])
 class RunRequest(BaseModel):
     symbols: list[str] | None = None   # override watchlist if provided
     exchange: str = "NSE"
+    interval: str = "minute"
+    start_time: datetime | None = None
+    end_time: datetime | None = None
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -81,13 +98,46 @@ async def algo_run(
     """
     Trigger one algo cycle synchronously and return the signals produced.
     Does NOT require the scheduler to be running.
+
+    start_time and end_time are mandatory for manual runs so the engine can
+    fetch bulk range data first, then run strategy analysis on that dataset.
     """
+    from src.api.dependencies import get_portfolio
+
     symbols = [s.upper() for s in body.symbols] if body.symbols else watchlist
     if not symbols:
         raise HTTPException(status_code=400, detail="No symbols in watchlist.")
 
     if fetcher is None:
         raise HTTPException(status_code=503, detail="Data fetcher not available.")
+
+    if body.start_time is None or body.end_time is None:
+        raise HTTPException(
+            status_code=400,
+            detail="start_time and end_time are required for algo run.",
+        )
+
+    interval = body.interval.strip().lower()
+    if interval not in _ALLOWED_INTERVALS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid interval. Use one of: minute, 3minute, 5minute, "
+                "15minute, 30minute, 60minute, day, week, month"
+            ),
+        )
+
+    start_dt = body.start_time
+    end_dt = body.end_time
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=_IST)
+    if end_dt.tzinfo is None:
+        end_dt = end_dt.replace(tzinfo=_IST)
+    if end_dt <= start_dt:
+        raise HTTPException(status_code=400, detail="end_time must be after start_time.")
+
+    # Get portfolio (may be None in paper trading)
+    portfolio = get_portfolio()
 
     try:
         pipeline = DataPipeline(fetcher)
@@ -97,6 +147,10 @@ async def algo_run(
             pipeline=pipeline,
             risk_mgr=risk_mgr,
             exchange=body.exchange,
+            portfolio=portfolio,
+            interval=interval,
+            start_dt=start_dt,
+            end_dt=end_dt,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -110,10 +164,18 @@ async def algo_run(
     state.signals = (signals + state.signals)[:200]
 
     return {
+        "success": True,
+        "message": "Algo strategy run completed successfully.",
         "symbols_processed": len(symbols),
         "signals_generated": len(signals),
         "signals": signals,
         "cycle_count": state.cycle_count,
+        "run_config": {
+            "exchange": body.exchange,
+            "interval": interval,
+            "start_time": start_dt.isoformat(),
+            "end_time": end_dt.isoformat(),
+        },
     }
 
 

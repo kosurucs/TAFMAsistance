@@ -46,7 +46,9 @@ export function PortfolioPanel() {
 
   const positions = data?.positions?.[posView] ?? [];
   const holdings = data?.holdings ?? [];
-  const margins = data?.margins ?? {};
+  const marginSegments = Object.entries(data?.margins ?? {})
+    .filter(([, value]) => value?.enabled)
+    .sort(([a], [b]) => (a === 'equity' ? -1 : b === 'equity' ? 1 : a.localeCompare(b)));
   const dayPnl = data?.day_pnl ?? 0;
   const holdPnl = data?.holdings_pnl ?? 0;
 
@@ -159,20 +161,31 @@ export function PortfolioPanel() {
 
       {tab === 'Margins' && (
         <div className="pp-content">
-          <div className="pp-margins">
-            <div className="pp-margin-row">
-              <span>Available Cash</span>
-              <strong>{fmt(margins.available?.cash)}</strong>
-            </div>
-            <div className="pp-margin-row">
-              <span>Used Margin</span>
-              <strong>{fmt(margins.utilised?.debits)}</strong>
-            </div>
-            <div className="pp-margin-row">
-              <span>Available Margin</span>
-              <strong>{fmt(margins.available?.live_balance)}</strong>
-            </div>
-          </div>
+          {marginSegments.length === 0 ? (
+            <p className="pp-empty">No margin data available</p>
+          ) : (
+            marginSegments.map(([segment, margins]) => (
+              <section className="pp-margins" key={segment}>
+                <h4>{segment === 'equity' ? 'Equity & F&O' : segment}</h4>
+                <div className="pp-margin-row">
+                  <span>Available Cash</span>
+                  <strong>{fmt(margins.available?.cash)}</strong>
+                </div>
+                <div className="pp-margin-row">
+                  <span>Used Margin</span>
+                  <strong>{fmt(margins.utilised?.debits)}</strong>
+                </div>
+                <div className="pp-margin-row">
+                  <span>Available Margin</span>
+                  <strong>{fmt(margins.available?.live_balance)}</strong>
+                </div>
+                <div className="pp-margin-row">
+                  <span>Net Margin</span>
+                  <strong>{fmt(margins.net)}</strong>
+                </div>
+              </section>
+            ))
+          )}
         </div>
       )}
     </div>

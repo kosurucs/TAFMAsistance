@@ -42,6 +42,11 @@ async def start_backtest(
     atr_mult_sl: float = 1.5,
     atr_mult_tp: float = 3.0,
     volume_confirm: bool = True,
+    option_construction: str = "RISING",
+    zero_delta: float = 0.01,
+    adr_days: int = 20,
+    max_levels: int = 10,
+    min_lots_multiplier: int = 1,
 ):
     """Start a background backtest job. Returns job_id immediately.
 
@@ -79,6 +84,11 @@ async def start_backtest(
         "atr_mult_sl": atr_mult_sl,
         "atr_mult_tp": atr_mult_tp,
         "volume_confirm": volume_confirm,
+        "option_construction": option_construction,
+        "zero_delta": zero_delta,
+        "adr_days": adr_days,
+        "max_levels": max_levels,
+        "min_lots_multiplier": min_lots_multiplier,
     }
     _jobs[job_id] = {
         "status": "RUNNING",
