@@ -5,11 +5,30 @@ import { Badge } from '../../design-system';
 import './ChatPanel.css';
 
 const QUICK_PROMPTS = [
-  'Give a quick trend summary for {symbol}',
-  'What are support and resistance for {symbol}?',
-  'Is RSI signalling overbought or oversold in {symbol}?',
-  'How risky is a fresh entry in {symbol} now?',
+  '/summary {symbol}',
+  '/levels {symbol}',
+  '/rsi {symbol}',
+  '/risk {symbol}',
 ];
+
+const COMMAND_TO_PROMPT = {
+  '/summary': (symbol) => `Give a quick trend summary for ${symbol}`,
+  '/levels': (symbol) => `What are support and resistance for ${symbol}?`,
+  '/rsi': (symbol) => `Is RSI signalling overbought or oversold in ${symbol}?`,
+  '/risk': (symbol) => `How risky is a fresh entry in ${symbol} now?`,
+  '/signal': (symbol) => `Should I consider BUY, SELL, or WAIT for ${symbol}? Explain briefly.`,
+};
+
+function toPromptFromCommand(inputText, selectedSymbol) {
+  const raw = inputText.trim();
+  if (!raw.startsWith('/')) return raw;
+
+  const [command, ...rest] = raw.split(/\s+/);
+  const typedSymbol = rest.join(' ').trim().toUpperCase();
+  const symbol = typedSymbol || selectedSymbol || 'this stock';
+  const mapper = COMMAND_TO_PROMPT[command.toLowerCase()];
+  return mapper ? mapper(symbol) : raw;
+}
 
 // Format a JS Date as IST time string
 function toIST(date) {
@@ -92,7 +111,7 @@ function renderMarkdown(text) {
 }
 
 export function ChatPanel() {
-  const { selectedSymbol, indicators } = useMarketStore();
+  const { selectedSymbol, indicators, quote, candles, interval } = useMarketStore();
   const { messages, loading, addMessage, clearMessages, setLoading } = useChatStore();
   const [input, setInput] = useState('');
   const bottomRef = useRef(null);
@@ -109,7 +128,7 @@ export function ChatPanel() {
     if (messages.length === 0) {
       addMessage({
         role: 'assistant',
-        text: 'Hello! Ask me anything about the selected stock — price levels, indicators, trend analysis, or trading signals.',
+        text: 'Command prompt ready. Type /summary, /levels, /rsi, /risk, or /signal followed by a symbol (optional).',
         time: new Date(),
       });
     }
@@ -129,13 +148,22 @@ export function ChatPanel() {
   const send = async () => {
     const text = input.trim();
     if (!text || loading) return;
+    const prompt = toPromptFromCommand(text, selectedSymbol);
 
     const userMsg = { role: 'user', text, time: new Date() };
     addMessage(userMsg);
     setInput('');
     setLoading(true);
 
-    const { data, error } = await sendChatMessage(text, selectedSymbol, indicators || {});
+    const recentCandles = Array.isArray(candles) ? candles.slice(-20) : [];
+    const { data, error } = await sendChatMessage(
+      prompt,
+      selectedSymbol,
+      indicators || {},
+      quote || {},
+      recentCandles,
+      interval || null,
+    );
     
     if (error) {
       addMessage({
@@ -144,9 +172,10 @@ export function ChatPanel() {
         time: new Date(),
       });
     } else {
+      const source = data.source ? `\n\n[source: ${data.source}${data.model ? ` • ${data.model}` : ''}]` : '';
       addMessage({
         role: 'assistant',
-        text: data.reply || 'No response',
+        text: `${data.reply || 'No response'}${source}`,
         time: new Date(),
       });
     }
@@ -164,7 +193,7 @@ export function ChatPanel() {
     clearMessages();
     addMessage({
       role: 'assistant',
-      text: 'Hello! Ask me anything about the selected stock — price levels, indicators, trend analysis, or trading signals.',
+      text: 'Command prompt ready. Type /summary, /levels, /rsi, /risk, or /signal followed by a symbol (optional).',
       time: new Date(),
     });
     setInput('');
@@ -180,6 +209,7 @@ export function ChatPanel() {
   return (
     <div className="chat-panel">
       <div className="chat-prompts">
+        <div className="chat-console-help">Commands:</div>
         {promptChips.map((prompt) => (
           <button
             key={prompt}
@@ -224,7 +254,7 @@ export function ChatPanel() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={selectedSymbol ? `Ask anything about ${selectedSymbol}...` : 'Select a symbol and ask about trend, RSI, levels...'}
+          placeholder={selectedSymbol ? `> /summary ${selectedSymbol}` : '> /summary RELIANCE'}
           disabled={loading}
         />
         <button className="chat-send" onClick={send} disabled={loading || !input.trim()}>

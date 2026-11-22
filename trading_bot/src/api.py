@@ -11,6 +11,7 @@ GET /api/quote/{symbol}   – latest LTP / bid / ask
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import threading
@@ -25,6 +26,7 @@ _IST = ZoneInfo("Asia/Kolkata")
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from loguru import logger
 from pydantic import BaseModel, Field, model_validator
 
@@ -67,6 +69,7 @@ SUPPORTED_EXCHANGES = [
     if ex.strip()
 ]
 DEFAULT_CANDLE_LIMIT = int(os.environ.get("UI_CANDLE_LIMIT", "2000"))
+FRONTEND_URL = os.environ.get("UI_BASE_URL", "http://localhost:5173").rstrip("/")
 
 
 def _persist_access_token(access_token: str) -> None:
@@ -675,6 +678,184 @@ def get_symbols(search: str = "", exchange: str = "") -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+def _option_greeks(
+    option_type: str,
+    spot: float,
+    strike: float,
+    market_price: float,
+    expiry: datetime,
+    risk_free_rate: float = 0.065,
+) -> dict[str, float | None]:
+    """Calculate European Black-Scholes Greeks from implied volatility."""
+    sqrt_two = math.sqrt(2.0)
+
+    def cdf(value: float) -> float:
+        return 0.5 * (1.0 + math.erf(value / sqrt_two))
+
+    def pdf(value: float) -> float:
+        return math.exp(-0.5 * value * value) / math.sqrt(2.0 * math.pi)
+
+    def price_for_volatility(volatility: float, years: float) -> float:
+        root_time = math.sqrt(years)
+        d1 = (math.log(spot / strike) + (risk_free_rate + volatility * volatility / 2) * years) / (volatility * root_time)
+        d2 = d1 - volatility * root_time
+        discounted_strike = strike * math.exp(-risk_free_rate * years)
+        if option_type == "CE":
+            return spot * cdf(d1) - discounted_strike * cdf(d2)
+        return discounted_strike * cdf(-d2) - spot * cdf(-d1)
+
+    now = datetime.now(_IST)
+    years = max((expiry - now).total_seconds() / (365.0 * 86400.0), 1.0 / 365.0)
+    if spot <= 0 or strike <= 0 or market_price <= 0:
+        return {"iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
+
+    low, high = 0.01, 5.0
+    for _ in range(80):
+        midpoint = (low + high) / 2
+        if price_for_volatility(midpoint, years) < market_price:
+            low = midpoint
+        else:
+            high = midpoint
+    volatility = (low + high) / 2
+
+    root_time = math.sqrt(years)
+    d1 = (math.log(spot / strike) + (risk_free_rate + volatility * volatility / 2) * years) / (volatility * root_time)
+    d2 = d1 - volatility * root_time
+    gamma = pdf(d1) / (spot * volatility * root_time)
+    delta = cdf(d1) if option_type == "CE" else cdf(d1) - 1.0
+    annual_time_decay = -spot * pdf(d1) * volatility / (2.0 * root_time)
+    if option_type == "CE":
+        annual_time_decay -= risk_free_rate * strike * math.exp(-risk_free_rate * years) * cdf(d2)
+    else:
+        annual_time_decay += risk_free_rate * strike * math.exp(-risk_free_rate * years) * cdf(-d2)
+
+    return {
+        "iv": volatility * 100.0,
+        "delta": delta,
+        "gamma": gamma,
+        "theta": annual_time_decay / 365.0,
+        "vega": spot * pdf(d1) * root_time / 100.0,
+    }
+
+
+@app.get("/api/options-chain")
+def get_options_chain(symbol: str = "NIFTY", expiry: str = "", limit: int = 100) -> dict[str, Any]:
+    """Return a compact NFO option chain with live quote data."""
+    _require_kite_session()
+    if _instruments is None or _kite is None:
+        raise HTTPException(status_code=503, detail="Kite option data is not initialized.")
+
+    try:
+        import pandas as pd
+
+        df = _instruments.get_all_instruments("NFO").copy()
+        required = {"tradingsymbol", "name", "expiry", "strike", "instrument_type"}
+        if not required.issubset(df.columns):
+            raise RuntimeError("NFO instrument data is missing option-chain fields.")
+
+        symbol_upper = symbol.strip().upper()
+        df = df[
+            (df["name"].astype(str).str.upper() == symbol_upper)
+            & (df["instrument_type"].astype(str).str.upper().isin(["CE", "PE"]))
+        ].copy()
+        if df.empty:
+            return {"symbol": symbol_upper, "expiries": [], "expiry": None, "contracts": []}
+
+        df["expiry"] = pd.to_datetime(df["expiry"], errors="coerce")
+        df = df[df["expiry"].notna()]
+        expiries = sorted(df["expiry"].dt.strftime("%Y-%m-%d").unique().tolist())
+        today = datetime.now(_IST).date().isoformat()
+        future_expiries = [item for item in expiries if item >= today]
+        eligible_expiries = future_expiries or expiries
+        selected_expiry = expiry.strip() if expiry.strip() in eligible_expiries else eligible_expiries[0]
+        df = df[df["expiry"].dt.strftime("%Y-%m-%d") == selected_expiry]
+        df = df.sort_values(["strike", "instrument_type"])
+
+        bounded_limit = max(10, min(limit, 200))
+        strikes = df["strike"].drop_duplicates().sort_values().tolist()
+        spot_symbols = {
+            "NIFTY": "NSE:NIFTY 50",
+            "BANKNIFTY": "NSE:NIFTY BANK",
+            "FINNIFTY": "NSE:NIFTY FIN SERVICE",
+            "MIDCPNIFTY": "NSE:NIFTY MID SELECT",
+        }
+        underlying_key = spot_symbols.get(symbol_upper)
+        underlying_price = 0.0
+        if underlying_key:
+            underlying_quote = _kite.quote([underlying_key]).get(underlying_key, {})
+            underlying_price = float(underlying_quote.get("last_price", 0) or 0)
+
+        if underlying_price > 0:
+            midpoint = min(range(len(strikes)), key=lambda i: abs(float(strikes[i]) - underlying_price))
+        else:
+            midpoint = len(strikes) // 2
+        half_strikes = max(5, bounded_limit // 2)
+        selected_strikes = strikes[max(0, midpoint - half_strikes):midpoint + half_strikes]
+        df = df[df["strike"].isin(selected_strikes)]
+
+        records = df[
+            ["tradingsymbol", "name", "instrument_type", "expiry", "strike", "lot_size", "instrument_token"]
+        ].copy()
+        records["expiry"] = records["expiry"].dt.strftime("%Y-%m-%d")
+        records = records.fillna(0).to_dict(orient="records")
+
+        quote_symbols = [f"NFO:{row['tradingsymbol']}" for row in records]
+        quotes = _kite.quote(quote_symbols) if quote_symbols else {}
+        expiry_datetime = datetime.strptime(selected_expiry, "%Y-%m-%d").replace(
+            hour=15,
+            minute=30,
+            tzinfo=_IST,
+        )
+        risk_free_rate = float(os.environ.get("RISK_FREE_RATE", "0.065"))
+        for row in records:
+            quote = quotes.get(f"NFO:{row['tradingsymbol']}", {})
+            last_price = float(quote.get("last_price", 0) or 0)
+            ohlc = quote.get("ohlc", {}) or {}
+            depth = quote.get("depth", {}) or {}
+            buy_depth = depth.get("buy", []) or []
+            sell_depth = depth.get("sell", []) or []
+            previous_close = float(ohlc.get("close", 0) or 0)
+            row["last_price"] = last_price
+            row["average_price"] = quote.get("average_price", 0)
+            row["open_interest"] = quote.get("oi", 0)
+            row["volume"] = quote.get("volume", 0)
+            row["change"] = float(quote.get("net_change", 0) or 0)
+            row["change_percent"] = (
+                row["change"] / previous_close * 100.0 if previous_close else 0.0
+            )
+            row["open"] = ohlc.get("open", 0)
+            row["high"] = ohlc.get("high", 0)
+            row["low"] = ohlc.get("low", 0)
+            row["previous_close"] = previous_close
+            row["bid"] = buy_depth[0].get("price", 0) if buy_depth else 0
+            row["bid_quantity"] = buy_depth[0].get("quantity", 0) if buy_depth else 0
+            row["ask"] = sell_depth[0].get("price", 0) if sell_depth else 0
+            row["ask_quantity"] = sell_depth[0].get("quantity", 0) if sell_depth else 0
+            row["ohlc"] = ohlc
+            row.update(_option_greeks(
+                option_type=str(row["instrument_type"]).upper(),
+                spot=underlying_price,
+                strike=float(row["strike"]),
+                market_price=last_price,
+                expiry=expiry_datetime,
+                risk_free_rate=risk_free_rate,
+            ))
+
+        return {
+            "symbol": symbol_upper,
+            "underlying_price": underlying_price,
+            "risk_free_rate": risk_free_rate,
+            "expiry": selected_expiry,
+            "expiries": eligible_expiries,
+            "contracts": records,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Options chain fetch failed: {}", exc)
+        raise HTTPException(status_code=502, detail=f"Options chain fetch failed: {exc}") from exc
+
+
 @app.get("/api/market-data/{symbol}")
 def get_market_data(symbol: str, days_back: int = 0, interval: str = "minute", limit: int = DEFAULT_CANDLE_LIMIT) -> dict[str, Any]:
     """Return OHLCV candles + computed indicators for *symbol*.
@@ -839,35 +1020,122 @@ import json as _json
 
 _OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 _OLLAMA_CHAT_MODEL = os.environ.get("OLLAMA_CHAT_MODEL", "trading-assistant")
+_OLLAMA_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_CHAT_TIMEOUT_SECONDS", "45"))
+_OLLAMA_MAX_MODEL_ATTEMPTS = int(os.environ.get("OLLAMA_MAX_MODEL_ATTEMPTS", "2"))
+_OLLAMA_RETRY_PER_MODEL = int(os.environ.get("OLLAMA_RETRY_PER_MODEL", "1"))
+
+
+def _ollama_tags() -> list[str]:
+    """Return locally available Ollama model tags, or an empty list on failure."""
+    try:
+        with _ureq.urlopen(f"{_OLLAMA_URL}/api/tags", timeout=2) as r:
+            payload = _json.loads(r.read().decode())
+        models = payload.get("models", [])
+        tags: list[str] = []
+        for item in models:
+            name = str(item.get("name", "")).strip()
+            if name:
+                tags.append(name)
+        return tags
+    except Exception:
+        return []
+
+
+def _pick_ollama_model(available_tags: list[str]) -> str | None:
+    """Pick a practical model from available tags.
+
+    Preference order:
+      1) exact configured model (OLLAMA_CHAT_MODEL)
+      2) common local defaults (mistral/llama/phi/gemma/qwen)
+      3) first available tag
+    """
+    if not available_tags:
+        return None
+
+    configured = _OLLAMA_CHAT_MODEL.strip()
+    if configured and configured in available_tags:
+        return configured
+
+    preferred_prefixes = (
+        "mistral",
+        "llama3",
+        "llama3.1",
+        "llama3.2",
+        "phi3",
+        "gemma",
+        "qwen",
+    )
+    for prefix in preferred_prefixes:
+        match = next((t for t in available_tags if t.startswith(prefix)), None)
+        if match:
+            return match
+
+    return available_tags[0]
+
+
+def _candidate_ollama_models(available_tags: list[str]) -> list[str]:
+    """Return ordered candidate models for retry/fallback attempts."""
+    primary = _pick_ollama_model(available_tags)
+    if not primary:
+        return []
+    remaining = [tag for tag in available_tags if tag != primary]
+    return [primary, *remaining]
 
 def _ollama_available() -> bool:
-    try:
-        _ureq.urlopen(f"{_OLLAMA_URL}/api/tags", timeout=1)
-        return True
-    except Exception:
-        return False
+    return bool(_ollama_tags())
 
-def _ollama_chat(system: str, user: str, max_tokens: int = 600) -> str | None:
-    """Call Ollama and return the response text, or None on failure."""
-    try:
-        data = _json.dumps({
-            "model": _OLLAMA_CHAT_MODEL,
-            "system": system,
-            "prompt": user,
-            "stream": False,
-            "options": {"temperature": 0.7, "num_predict": max_tokens},
-        }).encode()
-        req = _ureq.Request(
-            f"{_OLLAMA_URL}/api/generate",
-            data=data,
-            headers={"Content-Type": "application/json"},
-        )
-        with _ureq.urlopen(req, timeout=60) as r:
-            body = _json.loads(r.read().decode())
-            return body.get("response", "").strip()
-    except Exception as exc:
-        logger.warning("Ollama chat failed: {}", exc)
-        return None
+def _ollama_chat(system: str, user: str, max_tokens: int = 600) -> tuple[str | None, str | None]:
+    """Call Ollama with retries/fallback and return (response_text, model_used)."""
+    tags = _ollama_tags()
+    model_candidates = _candidate_ollama_models(tags)[: max(1, _OLLAMA_MAX_MODEL_ATTEMPTS)]
+    if not model_candidates:
+        return None, None
+
+    last_model = model_candidates[0]
+    for selected_model in model_candidates:
+        last_model = selected_model
+        for attempt in range(1, max(1, _OLLAMA_RETRY_PER_MODEL) + 1):
+            try:
+                data = _json.dumps({
+                    "model": selected_model,
+                    "system": system,
+                    "prompt": user,
+                    "stream": False,
+                    "options": {"temperature": 0.7, "num_predict": max_tokens},
+                }).encode()
+                req = _ureq.Request(
+                    f"{_OLLAMA_URL}/api/generate",
+                    data=data,
+                    headers={"Content-Type": "application/json"},
+                )
+                with _ureq.urlopen(req, timeout=_OLLAMA_TIMEOUT_SECONDS) as r:
+                    body = _json.loads(r.read().decode())
+                    response_text = body.get("response", "").strip()
+                    if response_text:
+                        return response_text, selected_model
+            except Exception as exc:
+                logger.warning(
+                    "Ollama chat failed (model={}, attempt={}/{}): {}",
+                    selected_model,
+                    attempt,
+                    max(1, _OLLAMA_RETRY_PER_MODEL),
+                    exc,
+                )
+    return None, last_model
+
+
+@app.get("/api/chat/status")
+def chat_status() -> dict[str, Any]:
+    """Expose local Ollama connectivity/model info for LLM Studio."""
+    tags = _ollama_tags()
+    selected_model = _pick_ollama_model(tags)
+    return {
+        "ollama_connected": bool(tags),
+        "ollama_url": _OLLAMA_URL,
+        "configured_model": _OLLAMA_CHAT_MODEL,
+        "active_model": selected_model,
+        "available_models": tags,
+    }
 
 
 # ── Chat endpoint ─────────────────────────────────────────────────────────────
@@ -876,6 +1144,9 @@ class ChatRequest(BaseModel):
     message: str
     symbol: str | None = None
     indicators: dict[str, object] = Field(default_factory=dict)
+    quote: dict[str, object] = Field(default_factory=dict)
+    recent_candles: list[dict[str, object]] = Field(default_factory=list)
+    interval: str | None = None
 
 
 _CHAT_SYSTEM = (
@@ -892,6 +1163,9 @@ def chat(req: ChatRequest) -> dict[str, Any]:
     msg = req.message.strip()
     sym = (req.symbol or "").upper()
     ind = req.indicators
+    quote = req.quote
+    candles = req.recent_candles[-5:] if req.recent_candles else []
+    interval = req.interval or "unknown"
     now_ist = datetime.now(_IST).strftime("%d %b %Y %I:%M:%S %p IST")
 
     # ── Try Ollama first ──────────────────────────────────────────────────────
@@ -903,21 +1177,43 @@ def chat(req: ChatRequest) -> dict[str, Any]:
                 f"  {k}: {v}" for k, v in ind.items()
                 if v not in (None, "N/A", "")
             )
+        quote_lines = ""
+        if quote:
+            quote_lines = "\n".join(
+                f"  {k}: {v}" for k, v in quote.items()
+                if v not in (None, "N/A", "")
+            )
+        candle_lines = ""
+        if candles:
+            compact = []
+            for c in candles:
+                compact.append(
+                    f"t={c.get('time')} o={c.get('open')} h={c.get('high')} l={c.get('low')} c={c.get('close')} v={c.get('volume')}"
+                )
+            candle_lines = "\n".join(compact)
         context_block = (
-            f"Symbol: {sym}\nTime: {now_ist}\nIndicators:\n{ind_lines}"
-            if ind_lines else
-            f"Symbol: {sym}\nTime: {now_ist}"
+            f"Symbol: {sym}\nTime: {now_ist}\nInterval: {interval}\n"
+            f"Quote:\n{quote_lines if quote_lines else '  unavailable'}\n"
+            f"Indicators:\n{ind_lines if ind_lines else '  unavailable'}\n"
+            f"Recent candles (latest 5):\n{candle_lines if candle_lines else '  unavailable'}"
         )
         user_prompt = f"{context_block}\n\nUser question: {msg}"
-        reply = _ollama_chat(_CHAT_SYSTEM, user_prompt)
+        reply, model_used = _ollama_chat(_CHAT_SYSTEM, user_prompt)
         if reply:
-            return {"reply": reply, "timestamp_ist": now_ist, "source": "ollama"}
+            return {
+                "reply": reply,
+                "timestamp_ist": now_ist,
+                "source": "ollama",
+                "model": model_used,
+            }
 
     # ── Rule-based fallback ───────────────────────────────────────────────────
     msg_lower = msg.lower()
 
+    merged = {**quote, **ind}
+
     def _ind(key: str, default="N/A"):
-        return ind.get(key, default)
+        return merged.get(key, default)
 
     def _fmt_price(val) -> str:
         try:
@@ -1161,12 +1457,23 @@ def chat(req: ChatRequest) -> dict[str, Any]:
             )
 
 
-    return {"reply": reply, "timestamp_ist": now_ist}
+    return {
+        "reply": reply,
+        "timestamp_ist": now_ist,
+        "source": "rule-based",
+        "model": None,
+    }
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/llm-studio", include_in_schema=False)
+def redirect_llm_studio() -> RedirectResponse:
+    """Convenience redirect when users open UI routes on API port 8000."""
+    return RedirectResponse(url=f"{FRONTEND_URL}/llm-studio", status_code=307)
 
 
 # ── Manual order placement ────────────────────────────────────────────────────

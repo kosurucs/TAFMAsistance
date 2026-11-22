@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import { useMarketStore } from '../../store';
 import { useChartAdapter } from './useChartAdapter';
+import { useSignalMarkers } from '../../hooks/useSignalMarkers';
+import { useIndicatorOverlay } from '../../hooks/useIndicatorOverlay';
 import './CandleChart.css';
 
 const MIN_HEIGHT = 200;
@@ -27,12 +29,19 @@ export function CandleChart() {
   const [wrapperWidth, setWrapperWidth] = useState(null);
 
   // Chart adapter — clean, decoupled update methods
-  const { setCandles } = useChartAdapter(hostRef, { height: canvasHeight });
+  const { setCandles, setIndicators, setSignals } = useChartAdapter(hostRef, { height: canvasHeight });
 
   // Feed candles whenever store data changes
   useEffect(() => {
     setCandles(candles);
   }, [candles, setCandles]);
+
+  // Wire signal markers (polls /algo/signals)
+  useSignalMarkers(selectedSymbol, setSignals, !!selectedSymbol);
+
+  // Wire indicator overlays (fetches /api/indicators on symbol/interval change)
+  const displayInterval = INTERVAL_MAP[interval] || interval;
+  useIndicatorOverlay(selectedSymbol, 'NSE', displayInterval, setIndicators, !!selectedSymbol);
 
   const startDrag = (e, type) => {
     e.preventDefault();
@@ -63,8 +72,6 @@ export function CandleChart() {
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
   };
-
-  const displayInterval = INTERVAL_MAP[interval] || interval;
 
   return (
     <div

@@ -8,6 +8,8 @@ import { IndicatorPanel } from '../features/analysis/IndicatorPanel';
 import { QuoteBar } from '../features/trading/QuoteBar';
 import { SymbolSearch } from '../features/trading/SymbolSearch';
 import { ScenarioPanel } from '../features/analysis/ScenarioPanel';
+import { DecisionReport } from '../features/algo/DecisionReport';
+import { EngineStatus } from '../features/algo/EngineStatus';
 import './Dashboard.css';
 
 export default function Dashboard() {
@@ -39,6 +41,16 @@ export default function Dashboard() {
           <div className="dashboard__sidebar">
             <IndicatorPanel />
             <ScenarioPanel />
+          </div>
+        </div>
+
+        <div className="dashboard__monitor-hub">
+          <div className="dashboard__monitor-section">
+            <h2 className="dashboard__monitor-title">Monitor Hub</h2>
+          </div>
+          <div className="dashboard__monitor-grid">
+            <DecisionReport />
+            <EngineStatus />
           </div>
         </div>
 

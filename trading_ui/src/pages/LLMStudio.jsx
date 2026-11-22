@@ -3,17 +3,25 @@ import { AppLayout } from '../layouts/AppLayout';
 import { Card, Badge } from '../design-system';
 import { ChatPanel } from '../features/chat/ChatPanel';
 import { ResearchPanel } from '../features/research/ResearchPanel';
-import { getTrainingStats } from '../services/api';
+import { getTrainingStats, getChatStatus } from '../services/api';
 import { useEffect } from 'react';
 import './LLMStudio.css';
 
 export default function LLMStudio() {
   const [tab, setTab] = useState('research');
   const [stats, setStats] = useState(null);
+  const [chatStatus, setChatStatus] = useState(null);
 
   useEffect(() => {
     getTrainingStats().then(({ data }) => { if (data) setStats(data); });
+    getChatStatus().then(({ data }) => { if (data) setChatStatus(data); });
   }, []);
+
+  const ollamaConnected = Boolean(chatStatus?.ollama_connected);
+  const activeModel = chatStatus?.active_model || 'N/A';
+  const modeLabel = ollamaConnected ? 'Local Ollama' : 'Rule-based Fallback';
+  const outputVariant = ollamaConnected ? 'up' : 'neutral';
+  const outputLabel = ollamaConnected ? 'LLM Active' : 'Fallback Active';
 
   return (
     <AppLayout>
@@ -23,15 +31,15 @@ export default function LLMStudio() {
           <div className="llm-studio__status-grid">
             <div>
               <span className="status-label">Model</span>
-              <Badge variant="accent">Local GPT-2 124M</Badge>
+              <Badge variant={ollamaConnected ? 'accent' : 'neutral'}>{activeModel}</Badge>
             </div>
             <div>
               <span className="status-label">Mode</span>
-              <Badge variant="neutral">rasbt/llms-from-scratch</Badge>
+              <Badge variant="neutral">{modeLabel}</Badge>
             </div>
             <div>
               <span className="status-label">Output</span>
-              <Badge variant="up">JSON Structured</Badge>
+              <Badge variant={outputVariant}>{outputLabel}</Badge>
             </div>
             {stats && (
               <div>
@@ -79,6 +87,9 @@ export default function LLMStudio() {
 
         {tab === 'chat' && (
           <Card title="AI Trading Assistant" className="llm-studio__panel llm-studio__chat">
+            <p className="llm-studio__hint">
+              Command prompt mode enabled. Try commands like <strong>/summary RELIANCE</strong>, <strong>/levels TCS</strong>, or <strong>/signal INFY</strong>.
+            </p>
             <ChatPanel />
           </Card>
         )}

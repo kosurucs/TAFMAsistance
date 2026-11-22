@@ -51,7 +51,8 @@ export default function Login() {
   const [manualToken, setManualToken] = useState('');
 
   const pollRef = useRef(null);
-  const cdRef   = useRef(null);
+  const cdRef = useRef(null);
+  const callbackHandledRef = useRef(false);
 
   const stopPolling   = () => { clearInterval(pollRef.current); pollRef.current = null; };
   const stopCountdown = () => { clearInterval(cdRef.current);   cdRef.current   = null; };
@@ -84,6 +85,9 @@ export default function Login() {
 
     // --- Zerodha just redirected back with a token ---
     if (requestToken && (!callbackStatus || callbackStatus === 'success')) {
+      if (callbackHandledRef.current) return;
+      callbackHandledRef.current = true;
+
       window.history.replaceState({}, '', '/login');
       setPhase('exchanging');
       exchangeToken(requestToken)
@@ -109,20 +113,16 @@ export default function Login() {
   // Open Zerodha in a new tab + start polling
   const handleKiteLogin = () => {
     setErrorMsg(null);
-    const openAndPoll = (url) => {
-      window.open(url, '_blank', 'noopener,noreferrer');
-      setPhase('waiting_kite');
-      stopPolling();
-      pollRef.current = setInterval(() => {
-        checkAuthStatus().catch(() => {});
-      }, POLL_INTERVAL_MS);
+    const openKite = (url) => {
+      // Use same-tab navigation so callback relay can return into app flow.
+      window.location.assign(url);
     };
 
-    if (loginUrl) { openAndPoll(loginUrl); return; }
+    if (loginUrl) { openKite(loginUrl); return; }
 
     setPhase('fetching_url');
     getLoginUrl()
-      .then(url => { setPhase('idle'); openAndPoll(url); })
+      .then(url => { setPhase('idle'); openKite(url); })
       .catch(err => { setPhase('error'); setErrorMsg(err.message || 'Could not fetch Kite login URL.'); });
   };
 
@@ -265,7 +265,7 @@ export default function Login() {
         </div>
 
         <p className="lp-footnote">
-          Kite opens in a new tab. After completing 2FA, this page auto-detects the token
+          Kite opens in the same tab. After completing 2FA, this page auto-detects the token
           and redirects you — no copy-paste needed.
         </p>
       </div>

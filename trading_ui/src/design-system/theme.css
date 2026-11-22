@@ -20,6 +20,11 @@
   --color-warning: #d4a017;
   --color-neutral: #8b949e;
   --color-gold: #f0c674;
+  --color-control-bg: #121a23;
+  --color-control-border: #344150;
+  --color-focus-ring: rgba(77,166,255,0.24);
+  --control-height: 30px;
+  --control-padding-x: 10px;
 
   /* Spacing */
   --space-xs: 4px;
@@ -117,4 +122,54 @@ body {
   color: var(--color-text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+select,
+input:not([type='checkbox']):not([type='radio']),
+textarea {
+  min-height: var(--control-height);
+  padding: var(--space-xs) var(--control-padding-x);
+  color: var(--color-text-primary);
+  background: var(--color-control-bg);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-sm);
+  outline: 0;
+}
+
+select:hover,
+input:not([type='checkbox']):not([type='radio']):hover,
+textarea:hover {
+  border-color: var(--color-text-muted);
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+button {
+  min-height: var(--control-height);
+  cursor: pointer;
+  line-height: 1;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  color: var(--color-bg-primary);
+  background: var(--color-accent);
 }

@@ -11,6 +11,7 @@ Provides:
 from __future__ import annotations
 
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -185,18 +186,19 @@ class KiteAuthManager:
                 token = params.get("request_token", [None])[0]
                 status = params.get("status", [""])[0]
 
+                frontend_base = os.environ.get("UI_BASE_URL", "http://localhost:5173").rstrip("/")
+
                 if status == "success" and token:
                     request_token_holder.append(token)
-                    body = b"<html><body><h2>Login successful! You can close this tab.</h2></body></html>"
-                    self.send_response(200)
+                    redirect_url = f"{frontend_base}/login?status=success&request_token={token}"
+                    self.send_response(302)
+                    self.send_header("Location", redirect_url)
                 else:
-                    body = b"<html><body><h2>Login failed or token missing. Please retry.</h2></body></html>"
-                    self.send_response(400)
+                    redirect_url = f"{frontend_base}/login?status=failed"
+                    self.send_response(302)
+                    self.send_header("Location", redirect_url)
 
-                self.send_header("Content-Type", "text/html")
-                self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
-                self.wfile.write(body)
                 token_received.set()
 
             def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
@@ -327,6 +329,98 @@ class KiteDataFetcher:
             interval,
         )
         return candles
+
+    def get_ohlcv_range(
+        self,
+        instrument_token: int,
+        start_dt: datetime,
+        end_dt: datetime,
+        interval: str = "minute",
+    ) -> list[dict[str, Any]]:
+        """Return OHLCV candles for a fixed datetime range.
+
+        Args:
+            instrument_token: Zerodha numeric instrument token.
+            start_dt: Range start datetime (timezone-aware preferred).
+            end_dt: Range end datetime (must be after start).
+            interval: Kite candle interval.
+
+        Returns:
+            List of candle dicts with keys:
+            ``date, open, high, low, close, volume``.
+        """
+        try:
+            candles: list[dict[str, Any]] = self._kite.historical_data(
+                instrument_token,
+                from_date=start_dt,
+                to_date=end_dt,
+                interval=interval,
+            )
+        except Exception as exc:  # noqa: BLE001
+            max_days = self._extract_max_days(str(exc))
+            span_days = (end_dt - start_dt).total_seconds() / 86400.0
+            if max_days is not None and span_days > max_days:
+                logger.warning(
+                    "Range {} days exceeds {} days for interval '{}'; chunking fetch.",
+                    f"{span_days:.1f}",
+                    max_days,
+                    interval,
+                )
+                candles = self._get_ohlcv_range_chunked(
+                    instrument_token=instrument_token,
+                    start_dt=start_dt,
+                    end_dt=end_dt,
+                    interval=interval,
+                    max_days=max_days,
+                )
+            else:
+                raise
+
+        logger.debug(
+            "Fetched {} candles for token {} ({}) in explicit range.",
+            len(candles),
+            instrument_token,
+            interval,
+        )
+        return candles
+
+    @staticmethod
+    def _extract_max_days(error_text: str) -> int | None:
+        """Extract max-day limit from Kite error text, if present."""
+        m = re.search(r"max\s+limit\s*:\s*(\d+)\s*days", error_text, flags=re.IGNORECASE)
+        if not m:
+            return None
+        try:
+            return int(m.group(1))
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _get_ohlcv_range_chunked(
+        self,
+        instrument_token: int,
+        start_dt: datetime,
+        end_dt: datetime,
+        interval: str,
+        max_days: int,
+    ) -> list[dict[str, Any]]:
+        """Fetch OHLCV in multiple bounded windows when Kite enforces max days."""
+        all_candles: list[dict[str, Any]] = []
+        cursor = start_dt
+
+        while cursor < end_dt:
+            chunk_end = min(cursor + timedelta(days=max_days), end_dt)
+            part: list[dict[str, Any]] = self._kite.historical_data(
+                instrument_token,
+                from_date=cursor,
+                to_date=chunk_end,
+                interval=interval,
+            )
+            all_candles.extend(part)
+
+            # Move by one second to avoid re-requesting the same boundary candle.
+            cursor = chunk_end + timedelta(seconds=1)
+
+        return all_candles
 
     def get_quote(self, symbols: list[str]) -> dict[str, Any]:
         """Return live quotes for a list of tradingsymbol strings.

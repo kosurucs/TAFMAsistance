@@ -23,7 +23,7 @@ from utils.rr_calculator import calculate_sl_tp, MIN_RR_RATIO
 from utils.commission import CommissionCalculator
 
 
-STRATEGY_FAMILIES = ["TREND_FOLLOWING", "MEAN_REVERSION", "MOMENTUM", "PRICE_ACTION"]
+STRATEGY_FAMILIES = ["TREND_FOLLOWING", "MEAN_REVERSION", "MOMENTUM", "PRICE_ACTION", "OPTION_EMULATION"]
 TIMEFRAMES = ["1D", "1W", "1M"]   # Daily, Weekly, Monthly granularity for analysis
 
 
@@ -261,11 +261,134 @@ class Backtester:
             "MEAN_REVERSION": self._strategy_mean_reversion,
             "MOMENTUM": self._strategy_momentum,
             "PRICE_ACTION": self._strategy_price_action,
+            "OPTION_EMULATION": lambda frame, sym: self._strategy_option_emulation(frame, sym, custom_params or {}),
         }
         if strategy not in method_map:
             logger.warning(f"Unknown strategy '{strategy}' — skipping")
             return []
         return method_map[strategy](df, symbol)
+
+    def _strategy_option_emulation(self, df: pd.DataFrame, symbol: str, params: dict) -> list[TradeRecord]:
+        """
+        Backtest an option-emulation construction using level rebalancing.
+
+        The implementation mirrors the article's idea at a strategy level:
+        - Estimate a normalized directional score from price vs rolling anchor.
+        - Convert the score into discrete emulation levels.
+        - Rebalance by opening/closing level tranches as the level changes.
+        - Force-close all remaining tranches at the end of data.
+        """
+        construction = str(params.get("option_construction", "RISING")).upper()
+        zero_delta = max(float(params.get("zero_delta", 0.01)), 0.001)
+        adr_days = max(int(params.get("adr_days", 20)), 5)
+        max_levels = max(int(params.get("max_levels", 10)), 1)
+        min_lots_multiplier = max(int(params.get("min_lots_multiplier", 1)), 1)
+
+        positive_constructions = {"RISING", "NOT_FALLING"}
+        if construction not in {"RISING", "FALLING", "NOT_RISING", "NOT_FALLING"}:
+            logger.warning("Unknown option construction '{}' — defaulting to RISING", construction)
+            construction = "RISING"
+
+        trades: list[TradeRecord] = []
+        open_tranches: list[dict] = []
+
+        closes = df["close"].astype(float)
+        highs = df["high"].astype(float)
+        lows = df["low"].astype(float)
+        volumes = df["volume"].astype(float) if "volume" in df.columns else pd.Series([0.0] * len(df), index=df.index)
+
+        def _target_from_price(price: float, anchor: float, adr: float) -> int:
+            if adr <= 0:
+                return 0
+            normalized = (price - anchor) / adr
+            confidence = 1.0 / (1.0 + np.exp(-normalized))
+            if construction in positive_constructions:
+                level_ratio = confidence
+            else:
+                level_ratio = 1.0 - confidence
+            level = int(round(level_ratio * max_levels))
+            return max(0, min(max_levels, level))
+
+        def _open_tranche(i: int, direction: str, entry_price: float) -> None:
+            ind = self._compute_indicators_for_row(df, i)
+            atr = ind.get("atr", entry_price * 0.015) if ind else entry_price * 0.015
+            try:
+                rr_result = calculate_sl_tp(direction, entry_price, atr)
+            except Exception:
+                rr_result = None
+
+            if rr_result is None or not getattr(rr_result, "acceptable", False):
+                return
+
+            open_tranches.append({
+                "entry_i": i,
+                "entry_price": entry_price,
+                "direction": direction,
+                "sl": rr_result.sl,
+                "tp": rr_result.tp,
+                "signals_fired": {
+                    "option_construction": construction,
+                    "level_opened": True,
+                    "min_lots_multiplier": min_lots_multiplier,
+                },
+            })
+
+        def _close_tranche(i: int, exit_price: float, tranche: dict, exit_reason: str) -> None:
+            direction = tranche["direction"]
+            entry_price = float(tranche["entry_price"])
+            sl = float(tranche["sl"])
+            tp = float(tranche["tp"])
+            risk = abs(entry_price - sl)
+            reward = abs(exit_price - entry_price)
+            pnl_pct = (exit_price - entry_price) / entry_price if direction == "BUY" else (entry_price - exit_price) / entry_price
+            trades.append(TradeRecord(
+                entry_date=str(df.index[tranche["entry_i"]]),
+                exit_date=str(df.index[i]),
+                entry_price=round(entry_price, 2),
+                exit_price=round(exit_price, 2),
+                action=direction,
+                sl=round(sl, 2),
+                tp=round(tp, 2),
+                pnl=round(pnl_pct * 100, 2),
+                rr_achieved=round(reward / risk if risk > 0 else 0, 3),
+                exit_reason=exit_reason,
+                signals_fired=dict(tranche["signals_fired"]),
+            ))
+
+        start = max(adr_days + 5, 30)
+        for i in range(start, len(df)):
+            price = float(closes.iloc[i])
+            lookback = df.iloc[max(0, i - adr_days): i]
+            if lookback.empty:
+                continue
+
+            anchor = float(lookback["close"].mean())
+            adr = float((lookback["high"] - lookback["low"]).mean())
+            target_level = _target_from_price(price, anchor, adr)
+            current_level = len(open_tranches)
+
+            # Open new levels when the target level expands.
+            if target_level > current_level:
+                direction = "BUY" if construction in positive_constructions else "SELL"
+                for _ in range(target_level - current_level):
+                    _open_tranche(i, direction, price)
+
+            # Close excess levels when the target level contracts.
+            elif target_level < current_level:
+                for _ in range(current_level - target_level):
+                    if not open_tranches:
+                        break
+                    tranche = open_tranches.pop()
+                    _close_tranche(i, price, tranche, "REBALANCE")
+
+        # Force-close all remaining tranches at the last price.
+        if not df.empty and open_tranches:
+            final_i = len(df) - 1
+            final_price = float(closes.iloc[final_i])
+            for tranche in reversed(open_tranches):
+                _close_tranche(final_i, final_price, tranche, "FORCE_EXPIRATION")
+
+        return trades
     
     def _compute_indicators_for_row(self, df: pd.DataFrame, i: int, window: int = 60) -> dict:
         """Compute indicators on a rolling window ending at row i."""

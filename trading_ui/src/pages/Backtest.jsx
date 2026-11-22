@@ -24,6 +24,14 @@ const STRATEGY_OPTIONS = [
   { label: 'Momentum', value: 'MOMENTUM' },
   { label: 'Mean Rev', value: 'MEAN_REVERSION' },
   { label: 'Price Action', value: 'PRICE_ACTION' },
+  { label: 'Option Emulation', value: 'OPTION_EMULATION' },
+];
+
+const OPTION_CONSTRUCTION_OPTIONS = [
+  { label: 'Rising / Long Call', value: 'RISING' },
+  { label: 'Falling / Long Put', value: 'FALLING' },
+  { label: 'Not Rising / Short Call', value: 'NOT_RISING' },
+  { label: 'Not Falling / Short Put', value: 'NOT_FALLING' },
 ];
 
 const EXCHANGE_OPTIONS = [
@@ -87,6 +95,11 @@ export default function Backtest() {
       options.atrMultSl = customStrategy.atrMultSl;
       options.atrMultTp = customStrategy.atrMultTp;
       options.volumeConfirm = customStrategy.volumeConfirm;
+      options.optionConstruction = customStrategy.optionConstruction;
+      options.zeroDelta = customStrategy.zeroDelta;
+      options.adrDays = customStrategy.adrDays;
+      options.maxLevels = customStrategy.maxLevels;
+      options.minLotsMultiplier = customStrategy.minLotsMultiplier;
     }
 
     const { data, error: err } = await startBacktest(selectedSymbol, years, options);
@@ -276,11 +289,45 @@ export default function Backtest() {
                   Include in next backtest
                 </label>
               </div>
+
+              <div className="bt-builder-row">
+                <span className="bt-builder-section-label">OPTION</span>
+                <label className="bt-builder-field">
+                  Construction
+                  <select
+                    className="bt-select"
+                    value={customStrategy.optionConstruction}
+                    onChange={(e) => setCustomStrategy({ optionConstruction: e.target.value })}
+                  >
+                    {OPTION_CONSTRUCTION_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="bt-builder-field">
+                  Zero delta {numInput('zeroDelta', 0.001, 0.001)}
+                </label>
+              </div>
+
+              <div className="bt-builder-row">
+                <span className="bt-builder-section-label">EMULATION</span>
+                <label className="bt-builder-field">
+                  ADR days {numInput('adrDays', 1, 5)}
+                </label>
+                <label className="bt-builder-field">
+                  Max levels {numInput('maxLevels', 1, 1)}
+                </label>
+                <label className="bt-builder-field">
+                  Lot multiplier {numInput('minLotsMultiplier', 1, 1)}
+                </label>
+              </div>
+
               <p className="bt-builder-hint">
                 Signal: EMA{customStrategy.emaFast} crosses EMA{customStrategy.emaSlow} +
                 RSI not past {customStrategy.rsiOversold}/{customStrategy.rsiOverbought}
                 {customStrategy.volumeConfirm ? ' + volume ≥ 1.2× avg' : ''} →
                 SL {customStrategy.atrMultSl}×ATR / TP {customStrategy.atrMultTp}×ATR
+                {customStrategy.enabled && strategyFilter === 'OPTION_EMULATION' ? ` | ${customStrategy.optionConstruction} / ADR ${customStrategy.adrDays} / levels ${customStrategy.maxLevels}` : ''}
               </p>
             </div>
           )}

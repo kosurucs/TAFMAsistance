@@ -9,7 +9,7 @@
 .app-header {
   display: flex;
   align-items: center;
-  height: 56px;
+  height: 52px;
   padding: 0 var(--space-lg);
   background: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-border);
@@ -55,8 +55,9 @@
 }
 
 .app-nav__tab {
-  padding: 6px var(--space-md);
-  border-radius: var(--radius-md);
+  padding: 5px var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--color-text-secondary);
@@ -73,7 +74,63 @@
 .app-nav__tab--active {
   color: var(--color-accent);
   background: rgba(77,166,255,0.1);
-  border-bottom: 2px solid var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.app-nav__group {
+  position: relative;
+}
+
+.app-nav__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.app-nav__chevron {
+  font-size: var(--font-size-xs);
+  transition: transform var(--transition-fast);
+}
+
+.app-nav__chevron--open {
+  transform: rotate(180deg);
+}
+
+.app-nav__submenu {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  left: 0;
+  z-index: 300;
+  min-width: 170px;
+  padding: var(--space-xs);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-modal);
+}
+
+.app-nav__submenu-item {
+  display: block;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.app-nav__submenu-item:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.app-nav__submenu-item--active {
+  color: var(--color-accent);
+  background: var(--color-bg-hover);
 }
 
 /* right cluster */

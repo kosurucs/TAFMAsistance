@@ -47,18 +47,42 @@ export const fetchIndicators = (symbol) =>
       data: data?.indicators ?? null,
       error,
     }));
+export const searchSymbols = (query, exchange = '') =>
+  request(`/api/symbols?search=${encodeURIComponent(query)}&exchange=${encodeURIComponent(exchange)}`);
+export const fetchOptionsChain = (symbol, expiry = '', limit = 100) => {
+  const params = new URLSearchParams({ symbol, limit: String(limit) });
+  if (expiry) params.set('expiry', expiry);
+  return request(`/api/options-chain?${params}`);
+};
 
 // Portfolio
 export const fetchPortfolio = () => request('/api/portfolio');
 export const fetchPositions = () => request('/api/positions');
-export const fetchMonitorStatus = () => request('/portfolio/monitor');
 
 // Orders
 export const placeOrder = (order) => request('/api/order', { method: 'POST', body: JSON.stringify(order) });
 
 // LLM Chat
-export const sendChatMessage = (message, symbol, indicators) =>
-  request('/api/chat', { method: 'POST', body: JSON.stringify({ message, symbol, indicators }) });
+export const sendChatMessage = (
+  message,
+  symbol,
+  indicators,
+  quote = {},
+  recentCandles = [],
+  interval = null,
+) =>
+  request('/api/chat', {
+    method: 'POST',
+    body: JSON.stringify({
+      message,
+      symbol,
+      indicators,
+      quote,
+      recent_candles: recentCandles,
+      interval,
+    }),
+  });
+export const getChatStatus = () => request('/api/chat/status');
 
 // Research – comprehensive multi-source instrument analysis
 export const researchAnalyze = (symbol, exchange = 'NSE', deep = true, useCache = true) =>
@@ -106,7 +130,23 @@ export const testConnection = () => request('/api/auth/test-connection', { metho
 
 // Algo Engine
 export const getAlgoStatus      = ()           => request('/algo/status');
-export const runAlgoCycle       = (body = {})  => request('/algo/run', { method: 'POST', body: JSON.stringify(body) });
+export const runAlgoCycle = ({
+  symbols,
+  exchange = 'NSE',
+  interval = 'minute',
+  startTime,
+  endTime,
+} = {}) =>
+  request('/algo/run', {
+    method: 'POST',
+    body: JSON.stringify({
+      symbols,
+      exchange,
+      interval,
+      start_time: startTime,
+      end_time: endTime,
+    }),
+  });
 export const getAlgoSignals     = (limit = 50) => request(`/algo/signals?limit=${limit}`);
 export const getAlgoStrategies  = ()           => request('/algo/strategies');
 export const toggleAlgoStrategy = (name)       => request(`/algo/strategies/${encodeURIComponent(name)}/toggle`, { method: 'POST' });
